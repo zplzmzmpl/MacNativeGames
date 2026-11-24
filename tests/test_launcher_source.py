@@ -41,7 +41,7 @@ class LauncherSource(unittest.TestCase):
             for folder in folders:
                 self.assertTrue(any(f.startswith(f'games/{folder}/') for f in self.files), (game, folder))
         for name in ('build_app.py', 'update_runtime.py', 'shader_update.py', 'tools/builder_jobs/__main__.py',
-                     'tools/deps/__init__.py', 'tools/prebuilt.py'):
+                     'tools/deps/__init__.py', 'tools/prebuilt.py', 'games/oot/scripts/seed_image.py'):
             self.assertIn(name, self.files)
 
     def test_other_games_ios_parts_and_tests_are_left_out(self):

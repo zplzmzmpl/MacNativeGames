@@ -193,14 +193,16 @@ class EveryDownloadIsCarried(unittest.TestCase):
 
 class Environment(unittest.TestCase):
     def setUp(self):
-        self.store = Path(tempfile.mkdtemp())
-        self.addCleanup(shutil.rmtree, self.store)
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp)
+        self.store = tmp / 'Application Support' / 'offline'
+        self.store.mkdir(parents=True)
         (self.store / 'manifest.json').write_text(json.dumps({'git': {'a-b': ['https://github.com/a/b.git']}}))
 
     def test_pip_and_git_point_at_the_store(self):
         env = offline.environment(self.store, {'PATH': '/usr/bin'})
         self.assertEqual(env['PIP_NO_INDEX'], '1')
-        self.assertEqual(env['PIP_FIND_LINKS'], str(self.store / 'wheels'))
+        self.assertEqual(env['PIP_FIND_LINKS'], (self.store / 'wheels').as_uri())
         self.assertEqual(env['GIT_CONFIG_COUNT'], '1')
         self.assertEqual(env['GIT_CONFIG_KEY_0'], f'url.{self.store / "git/a-b.git"}.insteadOf')
         self.assertEqual(env['GIT_CONFIG_VALUE_0'], 'https://github.com/a/b.git')

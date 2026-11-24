@@ -338,7 +338,7 @@ def pool_list(work,tree,mode='full'):
     return out
 
 # The bundle's shaders as image parts (shader-seed.img.NNN, shader-libs.img.NNN beside the two folders, at most
-# IMAGE_PART bytes each; ios/tools/seed_image.py, read in place by totk_seed_image.h), not 128,674 seed files and 64,699
+# IMAGE_PART bytes each; scripts/seed_image.py, read in place by totk_seed_image.h), not 128,674 seed files and 64,699
 # libraries (2026-11-17, user: "继续做吧"): from the USB drive the App is on, a library first used in play cost an
 # open() of 100 ms or more inside the replay (mtl4-2: 111 ms in lib_from_file), and the first camera turn into a new area
 # stalled on batches of them. The folders keep only the other files (the manifests, the lists). IMAGE_LAYOUT is part of
@@ -349,9 +349,7 @@ IMAGE_PART=1<<30
 def write_shader_images(seed,libraries,resources):
     """The seed's and the libraries' shader files into image parts in resources; the rest of the seed copied as files.
     Returns (seed files, libraries) in the images."""
-    tools=str(GAME/'ios/tools')
-    if tools not in sys.path:sys.path.insert(0,tools)
-    from seed_image import image_names,write_parts
+    from games.oot.scripts.seed_image import image_names,write_parts
     (resources/'shader-seed').mkdir(parents=True,exist_ok=True);(resources/'shader-libs').mkdir(parents=True,exist_ok=True)
     every=[p.name for p in seed.iterdir() if p.is_file()]
     imaged=image_names(every)
