@@ -635,7 +635,7 @@ def package_app(work,tree,out,game_data_mode='app',game_data_folder=None,shared=
     elif game_data_mode=='app':
         logs=work/'logs';logs.mkdir(exist_ok=True)
         bundle=build_app.data_bundle(tree,'oot',logs,bundle_id='org.macnativegames.oot',display_version='131072')
-        build_app.place_data_bundle(bundle,temporary,data,'oot')
+        build_app.place_data_bundle(bundle,temporary,data,'oot',installed=out)
     else:raise ValueError('invalid Mac game-data mode')
     rewrites=data/'rewritten/oot';rewrites.mkdir(parents=True)
     for module in sorted((tree/'rewritten/oot').glob('*.patched.bin')):clone_file(module,rewrites/module.name)

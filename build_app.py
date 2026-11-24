@@ -48,7 +48,7 @@ For iPhone/iPad: Xcode 26+ with iOS/Metal toolchains (XcodeGen, CMake and Ninja 
 Optional: Xcode's Metal toolchain (xcodebuild -downloadComponent MetalToolchain) compiles the startup shaders into the
 app, so moving or rebuilding it does not repeat that work at launch.
 """
-import argparse, concurrent.futures, ctypes, errno, glob, hashlib, itertools, json, os, platform, plistlib, shutil, struct, subprocess, sys, threading, time
+import argparse, concurrent.futures, ctypes, errno, glob, hashlib, itertools, json, os, platform, plistlib, shutil, stat, struct, subprocess, sys, threading, time
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent
@@ -1841,12 +1841,36 @@ def place_runtime(tree, app, version, logs, *, game='totk', lists=True, prompt_a
     clone(res / 'build/totk-native', app / f'Contents/MacOS/{APPS[game][2]}')
 
 
-def place_data_bundle(bundle, app, res, version):
-    """The signed game data in the app (Contents/Helpers), and the link the game opens it by."""
-    copy_tree(bundle, app / 'Contents/Helpers' / bundle.name)
+def same_game_data(before, bundle):
+    """Whether the installed bundle can stand in for the signed copy from the work folder."""
+    if before.is_symlink():
+        return False
+    image = 'Contents/Resources/romfs.bin'
+    try:
+        old, wanted = (before / image).lstat(), (bundle / image).lstat()
+        return (stat.S_ISREG(old.st_mode) and stat.S_ISREG(wanted.st_mode)
+                and (old.st_size, old.st_mtime_ns) == (wanted.st_size, wanted.st_mtime_ns)
+                and all((before / name).read_bytes() == (bundle / name).read_bytes() for name in HELPER_SIGNATURE))
+    except OSError:
+        return False
+
+
+def place_data_bundle(bundle, app, res, version, *, installed=None):
+    """Place the signed data and its relative link, favoring a same-volume clone of unchanged installed data."""
+    target = app / 'Contents/Helpers' / bundle.name
+    reused = False
+    if installed is not None:
+        before = installed / 'Contents/Helpers' / bundle.name
+        if same_game_data(before, bundle):
+            target.parent.mkdir(parents=True, exist_ok=True)
+            reused = clonefile(before, target)
+    if reused:
+        say('   game data: APFS clone from the installed app')
+    else:
+        copy_tree(bundle, target)
     link = res / f'extracted/{version}/romfs/romfs.bin'
     link.parent.mkdir(parents=True, exist_ok=True)
-    link.symlink_to(os.path.relpath(app / 'Contents/Helpers' / bundle.name / 'Contents/Resources/romfs.bin', link.parent))
+    link.symlink_to(os.path.relpath(target / 'Contents/Resources/romfs.bin', link.parent))
 
 
 def library_game_data(game, version, base=None):

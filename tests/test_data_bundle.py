@@ -85,6 +85,44 @@ class DataBundle(unittest.TestCase):
         self.assertIn('designated => identifier "test.data.app"', shown)
         self.assertNotIn('cdhash', shown)
 
+    def test_unchanged_game_data_is_cloned_from_the_installed_app(self):
+        bundle, _ = self.make()
+        installed, staged = self.root / 'Game.app', self.root / 'Game.app.ready'
+        build_app.place_data_bundle(bundle, installed, installed / 'Contents/Resources/totk', 'v143')
+        before = installed / 'Contents/Helpers' / bundle.name
+        target = staged / 'Contents/Helpers' / bundle.name
+        res = staged / 'Contents/Resources/totk'
+        with patch.object(build_app, 'clonefile', wraps=build_app.clonefile) as clone, \
+             patch.object(build_app, 'copy_tree', side_effect=AssertionError('copied the work folder bundle')):
+            build_app.place_data_bundle(bundle, staged, res, 'v143', installed=installed)
+        clone.assert_called_once_with(before, target)
+        self.assertEqual((res / 'extracted/v143/romfs/romfs.bin').resolve(), target / 'Contents/Resources/romfs.bin')
+        self.assertTrue(build_app.keep_game_data(staged, installed, verify=lambda app: True))
+        self.assertEqual((target / 'Contents/Resources/romfs.bin').read_bytes(), b'romfs image')
+
+    def test_different_data_or_unavailable_clone_uses_the_work_folder(self):
+        bundle, _ = self.make()
+        for case in ('different seal', 'different size', 'missing image', 'clone unavailable'):
+            with self.subTest(case=case):
+                installed, staged = self.root / case / 'Game.app', self.root / case / 'Game.app.ready'
+                build_app.place_data_bundle(bundle, installed, installed / 'Contents/Resources/totk', 'v143')
+                before = installed / 'Contents/Helpers' / bundle.name
+                image = before / 'Contents/Resources/romfs.bin'
+                if case == 'different seal':
+                    (before / 'Contents/_CodeSignature/CodeResources').write_bytes(b'other seal')
+                elif case == 'different size':
+                    image.write_bytes(b'other image size')
+                elif case == 'missing image':
+                    image.unlink()
+                res = staged / 'Contents/Resources/totk'
+                with patch.object(build_app, 'clonefile', return_value=False) as clone, \
+                     patch.object(build_app, 'copy_tree', wraps=build_app.copy_tree) as copy:
+                    build_app.place_data_bundle(bundle, staged, res, 'v143', installed=installed)
+                target = staged / 'Contents/Helpers' / bundle.name
+                copy.assert_called_once_with(bundle, target)
+                self.assertEqual((before, target) in [args for args, _ in clone.call_args_list], case == 'clone unavailable')
+                self.assertEqual((res / 'extracted/v143/romfs/romfs.bin').read_bytes(), b'romfs image')
+
 
 if __name__ == '__main__':
     unittest.main()
