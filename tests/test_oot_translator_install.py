@@ -34,7 +34,7 @@ class TranslatorInstall(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.base = Path(self.temp.name)
         self.build = load_build()
-        self.game = self.base / 'game'   # a stand-in checkout: prebuilt files with their checksums, the real scripts
+        self.game = self.base / 'checkout/games/oot'   # keep the work folder outside the stand-in checkout
         prebuilt = self.game / 'prebuilt/macos-arm64'
         prebuilt.mkdir(parents=True)
         (self.game / 'scripts').symlink_to(GAME / 'scripts')
