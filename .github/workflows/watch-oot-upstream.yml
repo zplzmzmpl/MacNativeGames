@@ -1,0 +1,97 @@
+name: Watch Ocarina of Time upstream
+
+on:
+  schedule:
+    - cron: '17 */6 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Report matches without opening an issue
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: watch-oot-upstream
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    if: github.repository == 'zplzmzmpl/MacNativeGames'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      DRY_RUN: ${{ inputs.dry_run }}
+      UPSTREAM: ly05010419/MacNativeGames
+      # Includes the commits reviewed in the initial synchronization.
+      BASELINE: 7ef42f53bf62e4646919b599256b39a9ae3f23ad
+    steps:
+      - name: Check upstream and notify the fork owner
+        shell: bash
+        run: |
+          last_notified=$(gh api --method GET --paginate --slurp "repos/$GITHUB_REPOSITORY/issues" \
+            -f state=all -f sort=created -f direction=desc -F per_page=100 |
+            jq -r '[.[][] | select(.user.login == "github-actions[bot]") | (.body // "") |
+              capture("<!-- oot-upstream-tip: (?<sha>[0-9a-f]{40}) -->").sha] | first // empty')
+          base=${last_notified:-$BASELINE}
+
+          git init -q "$RUNNER_TEMP/oot-upstream"
+          cd "$RUNNER_TEMP/oot-upstream"
+          git remote add upstream "https://github.com/$UPSTREAM.git"
+          git fetch --no-tags --filter=blob:none --depth=128 upstream refs/heads/main
+          if ! git cat-file -e "$base^{commit}" 2>/dev/null; then
+            git fetch --no-tags --filter=blob:none --unshallow upstream refs/heads/main
+          fi
+          tip=$(git rev-parse FETCH_HEAD)
+          if ! git merge-base --is-ancestor "$base" "$tip"; then
+            echo "::error::The last reviewed commit is no longer an ancestor of upstream main."
+            exit 1
+          fi
+
+          watched=(
+            games/oot zeldaVR shared
+            games/totk/third_party/d2r_gfx
+            build_app.py update_runtime.py shader_update.py
+            tools/deps tools/builder tools/builder_jobs tools/prebuilt.py tools/launcher_source.py
+            ':(glob)tests/test_oot_*'
+            ':(exclude)games/totk/third_party/d2r_gfx/gfx/nvn/botw_finish.h'
+            ':(exclude)games/totk/third_party/d2r_gfx/gfx/nvn/totk_fxaa_quality.h'
+            ':(exclude)games/totk/third_party/d2r_gfx/gfx/nvn/totk_smaa.h'
+          )
+          # Each first-parent entry represents one upstream change or merged PR.
+          commits=$(git rev-list --reverse --first-parent "$base..$tip")
+          matches=()
+          while IFS= read -r commit; do
+            [[ -n "$commit" ]] || continue
+            changed=$(git diff --name-only --no-renames "$commit^1" "$commit" -- "${watched[@]}")
+            if [[ -n "$changed" ]]; then
+              matches+=("$commit")
+            fi
+          done <<< "$commits"
+          if (( ${#matches[@]} == 0 )); then
+            echo 'No new Ocarina of Time or shared build/runtime changes.' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          body="$RUNNER_TEMP/oot-upstream-issue.md"
+          {
+            printf '@%s，上游有 %d 项可能影响《时之笛》的改动。\n\n' "$GITHUB_REPOSITORY_OWNER" "${#matches[@]}"
+            printf '比较范围 <%s>\n\n' "https://github.com/$UPSTREAM/compare/$base...$tip"
+            for sha in "${matches[@]:0:100}"; do
+              printf -- '- [`%s`](https://github.com/%s/commit/%s)\n' "${sha:0:12}" "$UPSTREAM" "$sha"
+            done
+            if (( ${#matches[@]} > 100 )); then
+              printf '\n其余提交见比较范围。\n'
+            fi
+            printf '\n<!-- oot-upstream-tip: %s -->\n' "$tip"
+          } > "$body"
+          cat "$body" >> "$GITHUB_STEP_SUMMARY"
+          if [[ "$DRY_RUN" != true ]]; then
+            gh issue create --repo "$GITHUB_REPOSITORY" \
+              --title "上游《时之笛》更新 · ${tip:0:12}" \
+              --body-file "$body" --assignee "$GITHUB_REPOSITORY_OWNER"
+          fi
