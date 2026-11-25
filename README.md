@@ -18,7 +18,7 @@
 
 ## 上游同步
 
-[GitHub Actions](https://github.com/zplzmzmpl/MacNativeGames/actions/workflows/watch-oot-upstream.yml) 每六小时检查一次上游 `main`。它关注《时之笛》本身及可能影响它的共享运行时和 Launcher 构建代码。发现新改动时，会在本 fork 开一个 Issue 并提醒维护者。上游改动经核对后再融合。
+[GitHub Actions](https://github.com/zplzmzmpl/MacNativeGames/actions/workflows/watch-oot-upstream.yml) 每天北京时间 09:17 检查一次上游 `main`。它关注《时之笛》本身及可能影响它的共享运行时和 Launcher 构建代码。发现新改动时，会在本 fork 开一个 Issue 并提醒维护者。上游改动经核对后再融合。
 
 公共仓库连续 60 天没有活动时，GitHub 可能停用定时工作流。可在 Actions 页面重新启用。 [GitHub 定时工作流说明](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/disable-and-enable-workflows)
 
