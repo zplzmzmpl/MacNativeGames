@@ -23,8 +23,7 @@ sys.path.insert(0, str(REPO))
 from tools.deps import core, offline, offline_pack  # noqa: E402
 
 # The games the Launcher builds (tools/builder_jobs/repo.py GAMES) and the folder holding each one's build code
-GAME_FOLDERS = {'totk': 'totk', 'botw': 'totk', 'dkb': 'dkb', 'pkp': 'pokopia', 'oot': 'oot', 'dread': 'dread',
-                'tmnt': 'tmnt', 'acnh': 'acnh', 'eow': 'eow', 'odyssey': 'odyssey'}
+GAME_FOLDERS = {'oot': 'oot'}
 HOSTS = re.compile(r'https?://(github\.com|raw\.githubusercontent\.com|[a-z0-9-]+\.googlesource\.com|pypi\.org|'
                    r'files\.pythonhosted\.org|api\.nuget\.org|[a-z0-9.-]*nintendo\.(net|com)|downloads\.[a-z.]+|builds\.dotnet)')
 # Download addresses in build code that a player's build never fetches, and why
@@ -38,7 +37,7 @@ NOT_FETCHED = {
 }
 NOT_FETCHED_PINS = {
     'DEPTH_MODEL_LICENSE': 'the Launcher itself carries the depth model (MNG-Launcher make_app.py)',
-    'PYTHON_ENVIRONMENTS': 'tools/ui_pack, a development tool, not a game build',
+    'PYTHON_ENVIRONMENTS': 'development-only environments',
 }
 # a command that runs the .NET SDK (['dotnet', 'build', …], [dotnet, 'restore', …], "$DOTNET" publish) or asks tools/deps
 # for it (program('dotnet'), env('dotnet'), …): the store carries no SDK (offline.NOT_CARRIED)
@@ -46,10 +45,6 @@ SDK_COMMAND = re.compile(r"""['"]dotnet['"]\s*,\s*['"](?:build|restore|publish)[
                          r"""|"\$DOTNET"\s+publish|(?:program|prefix|env|path)\([^)]*['"]dotnet['"]""")
 # Code of the Launcher's games that runs the SDK but is never part of a player's build, and why
 SDK_NOT_IN_A_BUILD = {
-    'games/tmnt/tools/totk_xlate/publish_native.sh': 'rebuilds the prebuilt translator the repository holds (a development tool)',
-    'games/tmnt/tools/totk_xlate/publish_ios_lib.sh': 'an iOS library, run by no build script (a development tool)',
-    'games/totk/tools/totk_xlate/publish_native.sh': 'rebuilds the prebuilt translator the repository holds (a development tool)',
-    'games/totk/tools/totk_xlate/publish_ios_lib.sh': 'rebuilds the prebuilt iOS translator library (a development tool)',
     'games/oot/tools/totk_xlate/publish_native.sh': 'rebuilds the prebuilt translator the repository holds (a development tool)',
     'games/oot/tools/totk_xlate/publish_ios_lib.sh': 'rebuilds the prebuilt iOS translator library (a development tool)',
     'games/oot/tools/build_shader_service.py': 'rebuilds the prebuilt translator (a development tool, NOT_FETCHED)',
@@ -96,7 +91,8 @@ class EveryDownloadIsCarried(unittest.TestCase):
         git = {url for url, _ in offline_pack.git_pins()}
         files = {url for url, _ in offline_pack.files_wanted().values()}
         from tools.deps import pins
-        skipped = {v[1] if isinstance(v, tuple) and len(v) == 2 else None for v in ()}
+        from build_app import HACTOOL
+        skipped = {HACTOOL[0]}  # the Switch 1 unpacker is unused by the Ocarina entry point
         skipped |= {pins.DEPTH_MODEL_LICENSE[0]}
         skipped |= {url for env in pins.PYTHON_ENVIRONMENTS.values() for _, url, _ in env}
         skipped |= {pins.SOURCES[n][1] for n in offline.NOT_CARRIED if n in pins.SOURCES}
@@ -141,8 +137,7 @@ class EveryDownloadIsCarried(unittest.TestCase):
         uses = re.compile(r"""(?:program|prefix|path|build_tools)\([^)]*['"](?:cmake|glslang|glslangValidator|xcodegen)['"]"""
                           r"""|CMAKE_SET|tools/deps program (?:glslangValidator|xcodegen)|_cmake_install\(""")
         allowed = {'tools/deps/__init__.py': 'defines them, for iPhone / iPad builds and glslang',
-                   'build_app.py': 'cmake only for an iPhone / iPad build (codec_libraries target != macos)',
-                   'games/dread/build.py': 'the iPhone / iPad build (ios_prerequisites)'}
+                   'build_app.py': 'cmake only for an iPhone / iPad build (codec_libraries target != macos)'}
         found = {str(p.relative_to(REPO)) for p in build_code() if uses.search(p.read_text(errors='replace'))}
         self.assertEqual(found - set(allowed), set())
         import inspect
@@ -161,18 +156,6 @@ class EveryDownloadIsCarried(unittest.TestCase):
             subprocess.run(['git', '-C', t, 'commit', '-q', '-m', 'x'], check=True, env=env)
             short = subprocess.check_output(['git', '-C', t, 'rev-parse', '--short', 'HEAD'], text=True).strip()
             self.assertEqual(deps.spirv_cross_revision(t), f'Git commit: {short} Timestamp: 2026-09-16T13:27:19')
-
-    def test_skyward_sword_and_worldend_are_not_launcher_games(self):
-        """User 2026-11-22: "去掉 WORLDEND SYNDROME" (from the Launcher only), "去掉 塞尔达传说 御天之剑 HD"."""
-        from tools.builder_jobs import repo
-        self.assertNotIn('ss', repo.GAMES)
-        self.assertNotIn('worldend', repo.GAMES)
-        self.assertNotIn('games/ss', offline_pack.REQUIREMENTS)
-        self.assertNotIn('games/worldend', offline_pack.REQUIREMENTS)
-        from tools.builder_jobs import classify
-        for title, folder in (('01002DA013484000', 'games/ss'), ('010048900CF64000', 'games/worldend')):
-            self.assertIsNone(repo.game_of_title(title))   # never taken for a game the Launcher builds
-            self.assertIn(f'{folder}/build.py', classify.not_in_launcher(title))
 
     def test_explained_exceptions_still_exist(self):
         for rel in NOT_FETCHED:
@@ -306,8 +289,8 @@ class LaunchersOwnDownloads(unittest.TestCase):
         import shader_update as su
         with mock.patch.dict(os.environ, {'MNG_OFFLINE_STORE': str(self.store)}), \
              mock.patch.object(su, 'download', side_effect=AssertionError('downloaded')):
-            path, where = su.newest('totk', self.store)
-        self.assertEqual(path, REPO / su.LISTS['totk'])
+            path, where = su.newest('oot', self.store)
+        self.assertEqual(path, REPO / su.LISTS['oot'])
         self.assertIn('carries', where)
 
     def test_a_blocked_github_fails_fast(self):
@@ -364,28 +347,6 @@ class BuiltDependencies(unittest.TestCase):
             version, url, pin = pins.SOURCES[name]
             self.assertNotIn(pin, files, name)
             self.assertFalse(url in git and (url, pin) in offline_pack.git_pins(), name)
-
-
-class PrebuiltTranslator(unittest.TestCase):
-    def setUp(self):
-        self.tmp = Path(tempfile.mkdtemp())
-        self.addCleanup(shutil.rmtree, self.tmp)
-
-    def test_tmnt_uses_its_prebuilt_translator_and_refuses_another(self):
-        """TMNT's translator is prebuilt in the repository (user 2026-11-22: "对 做吧"), so no build of it needs .NET."""
-        tmnt = offline_pack.module('tmnt_build_shader_tools', 'games/tmnt/scripts/build_shader_tools.py')
-        self.assertNotIn('subprocess', vars(tmnt))   # nothing is compiled
-        cross = self.tmp / 'spirv-cross'
-        cross.write_bytes(b'cross')
-        with mock.patch.object(tmnt, 'program', return_value=cross):
-            _, service = tmnt.build(self.tmp / 'tmnt')
-            self.assertEqual(service.read_bytes(), (tmnt.PREBUILT / 'totk_xlate').read_bytes())
-            other = self.tmp / 'prebuilt'
-            other.mkdir()
-            (other / 'totk_xlate').write_bytes(b'another build')
-            shutil.copy2(tmnt.PREBUILT / 'totk_xlate.sha256', other / 'totk_xlate.sha256')
-            with mock.patch.object(tmnt, 'PREBUILT', other), self.assertRaisesRegex(ValueError, 'not the pinned translator'):
-                tmnt.build(self.tmp / 'tmnt-other')
 
 
 if __name__ == '__main__':

@@ -35,8 +35,7 @@ import tempfile
 REPO = Path(__file__).resolve().parent
 SCRIPTS = REPO / 'games/totk/scripts'
 RAW = 'https://raw.githubusercontent.com/ly05010419/MacNativeGames/main'
-LISTS = {'totk': 'games/totk/assets/shader_list.tsv', 'botw': 'games/botw/assets/shader_list.tsv',
-         'oot': 'games/oot/assets/shader_list.tsv'}
+LISTS = {'oot': 'games/oot/assets/shader_list.tsv'}
 TOOLS = {'oot': REPO / 'games/oot/scripts'}   # a game with its own list tools; the others use games/totk/scripts
 
 

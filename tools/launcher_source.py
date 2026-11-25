@@ -14,7 +14,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 LEFT_OUT = ('tests', 'windows_games')   # top-level folders no job of the Launcher reads
-IOS = ('games/*/ios/**', 'games/*/prebuilt/ios-arm64/**')   # a Mac Launcher builds Mac apps only
+GAME_EXCLUSIONS = ('games/*/ios/**', 'games/*/prebuilt/ios-arm64/**', 'games/*/tests/**')
 
 
 def kept_games():
@@ -38,7 +38,8 @@ def left_out_games(commit='HEAD'):
 def pathspecs(commit='HEAD'):
     """For git archive <commit> -- <pathspecs>: everything but what is left out."""
     return (['.'] + [f':(exclude)games/{name}' for name in left_out_games(commit)]
-            + [f':(exclude){name}' for name in LEFT_OUT] + [f':(exclude,glob){pattern}' for pattern in IOS])
+            + [f':(exclude){name}' for name in LEFT_OUT]
+            + [f':(exclude,glob){pattern}' for pattern in GAME_EXCLUSIONS])
 
 
 if __name__ == '__main__':

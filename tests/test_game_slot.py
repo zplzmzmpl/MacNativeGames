@@ -108,7 +108,8 @@ class GameProcesses(unittest.TestCase):
             for entry in (value.values if isinstance(value, ast.Dict) else [value]):
                 if isinstance(entry, ast.Tuple) and len(entry.elts) == 3 and isinstance(entry.elts[2], ast.Constant):
                     names.add(entry.elts[2].value)
-        self.assertTrue({'TOTK', 'BotW', 'Pokopia', 'Bananza'} <= names, names)
+        self.assertTrue({'TOTK', 'BotW'} <= names, names)
+        names.add('OcarinaOfTime')
         for game in GAMES:
             slot = load_slot(game)
             for name in sorted(names):

@@ -20,7 +20,6 @@ import argparse
 import ast
 import json
 import os
-import re
 import shutil
 import subprocess
 import sys
@@ -35,9 +34,8 @@ from tools.deps import BUILD_TOOLS, SOURCES, offline  # noqa: E402
 from tools.deps.core import digest, fetch  # noqa: E402
 from tools.deps.pins import FONTTOOLS, OPEN_FONTS, OPEN_FONTS_LICENSE, PACKAGES  # noqa: E402
 
-# Every game the Launcher builds (tools/builder_jobs/repo.py GAMES) installs one of these with pip; Super Mario Odyssey
-# names its packages in games/odyssey/build.py PACKAGES.
-REQUIREMENTS = ('games/totk', 'games/oot', 'games/acnh', 'games/dread', 'games/eow', 'games/tmnt')
+# Ocarina of Time’s Python dependencies.
+REQUIREMENTS = ('games/oot',)
 ICONS_FONTTOOLS = 'tools/builder/icons_env.py'   # the controller-icons page's fontTools (VERSION)
 PYTHON = '3.14'
 PLATFORM = 'macosx_14_0_arm64'
@@ -58,14 +56,7 @@ def git_pins():
     """[(url, commit)]: every commit a build fetches with git."""
     pins = [(url, pin) for name, (_, url, pin) in SOURCES.items()
             if url.endswith('.git') and name not in offline.NOT_CARRIED and name not in built_names()]
-    pins += [constant('build_app.py', 'HACTOOL'), constant('build_app.py', 'SPIRV_CROSS'),
-             constant('games/acnh/tools/build_hactool.py', 'HACTOOL'),
-             constant('games/odyssey/scripts/build_odyssey.py', 'SPIRV_CROSS')]
-    make = (REPO / 'games/eow/Makefile').read_text()
-    pins.append((re.search(r'git clone -q (https://\S+)', make).group(1),
-                 re.search(r'^SPIRV_CROSS_COMMIT\s*:?=\s*([0-9a-f]{40})', make, re.M).group(1)))
-    fps = constant('games/acnh/build.py', 'FPS_SOURCE_URL')
-    pins += [(fps, c) for c in re.findall(r'"commit":\s*"([0-9a-f]{40})"', (REPO / 'games/acnh/tools/prepare_fps.py').read_text())]
+    pins += [constant('build_app.py', 'SPIRV_CROSS')]
     return sorted(set(pins))
 
 
@@ -100,7 +91,6 @@ def requirement_sets():
     """[(label, [pip requirement lines])]: each set is resolved on its own (two games may pin one package differently)."""
     sets = [(f'{folder}/requirements.txt', [l.split('#')[0].strip() for l in (REPO / folder / 'requirements.txt').read_text().splitlines()
                                             if l.split('#')[0].strip()]) for folder in REQUIREMENTS]
-    sets.append(('games/odyssey/build.py PACKAGES', list(constant('games/odyssey/build.py', 'PACKAGES'))))
     sets.append(('tools/deps/pins.py BUILD_TOOLS', [f'{n}=={v}' for n, (v, _) in BUILD_TOOLS.items() if n not in offline.NOT_CARRIED]))
     sets.append((ICONS_FONTTOOLS, [f"fonttools=={constant(ICONS_FONTTOOLS, 'VERSION')}"]))
     return sets
@@ -195,17 +185,6 @@ def build_wheels(store, python):
         run([python, '-m', 'pip', 'download', '--disable-pip-version-check', '--no-binary=:all:', '--no-deps', '-d', sources, spec])
         say(f'source {spec} (GPL)')
 
-
-def module(name, path):
-    """A game's script as a module of its own name, its folder on sys.path."""
-    import importlib.util
-    folder = str((REPO / path).parent)
-    if folder not in sys.path:
-        sys.path.insert(0, folder)
-    spec = importlib.util.spec_from_file_location(name, REPO / path)
-    loaded = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(loaded)
-    return loaded
 
 
 LICENCE_FILES = ('LICENSE', 'LICENCE', 'COPYING', 'PATENTS', 'NOTICE')
@@ -346,15 +325,14 @@ def check(store, python):
                 if run(['git', '-C', folder, 'rev-parse', 'HEAD'], env=env).strip() != commit:
                     raise RuntimeError(f'{url} {commit}: another commit checked out')
             say(f'git   {url} {commit[:12]} (fetch and clone)')
-        not_carried(python, env, tmp)
+        not_carried(python, env)
     record = {'manifest_sha256': digest(store / offline.MANIFEST), 'at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}
     (store / CHECKED).write_text(json.dumps(record) + '\n')
     say('check passed: nothing was downloaded')
 
 
-def not_carried(python, env, tmp):
-    """What the store leaves out is refused, not downloaded; TMNT's translator, the one .NET program a Launcher game
-    runs, is its prebuilt NativeAOT file and starts with no .NET at all."""
+def not_carried(python, env):
+    """Verify that omitted dependencies fail locally in a released Launcher."""
     for name in offline.NOT_CARRIED:   # a package (LibHac) has no command of its own
         command = 'prefix' if name in SOURCES else 'program' if name in BUILD_TOOLS else None
         if command is None:
@@ -364,13 +342,6 @@ def not_carried(python, env, tmp):
         if r.returncode == 0:
             raise RuntimeError(f'{name}: made with the store in use ({(r.stdout + r.stderr)[-300:]})')
         say(f'deps  {name}: not carried, cannot be made')
-    tmnt = module('tmnt_build_shader_tools', 'games/tmnt/scripts/build_shader_tools.py')
-    _, service = tmnt.build(tmp / 'tmnt')
-    r = subprocess.run([str(service), '--serve'], input='', capture_output=True, text=True, timeout=60,
-                       env={'PATH': '/usr/bin:/bin', 'HOME': str(tmp)})   # no DOTNET_ROOT, no SDK on PATH
-    if r.returncode:
-        raise RuntimeError(f'TMNT\'s prebuilt translator does not start (exit {r.returncode}): {(r.stderr or r.stdout)[-500:]}')
-    say('.NET  TMNT\'s prebuilt translator starts with no .NET (NativeAOT)')
 
 
 def checked(store):

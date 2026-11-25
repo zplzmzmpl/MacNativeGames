@@ -2,6 +2,8 @@
 
 这个 fork 维护 **Switch 2 版《塞尔达传说 时之笛》** 的 Apple Silicon macOS 移植。支持的游戏更新为 **v131072**。运行和打包使用你自己导出的游戏，仓库保留《时之笛》构建所需的上游共享源码。
 
+游戏源码在 `games/oot`。上游共用的 NVN 图形后端和部分工具仍在 `games/totk`，沿用原路径以便同步。
+
 ## 安装与更新
 
 - 使用 Apple Silicon Mac 和 macOS 26 或更新版本。首次打包需要完整 Xcode 和 Metal Toolchain。

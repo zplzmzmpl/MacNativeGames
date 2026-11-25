@@ -3,7 +3,6 @@ whole build run against a stand-in build_app.py (events, a failure, a cancel).""
 import io
 import json
 import os
-import plistlib
 from pathlib import Path
 import shutil
 import signal
@@ -18,227 +17,9 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from tools.builder_jobs import build_job, checks, classify, history, installed, repo  # noqa: E402
+from tools.builder_jobs import build_job, checks, history, repo  # noqa: E402
 from tools.builder_jobs.events import Emitter  # noqa: E402
 sys.path.insert(0, str(ROOT / 'tests'))
-import switch_packages as sp  # noqa: E402
-
-KEYS = sp.keys_text()   # a game file's game is read from its content metas with these (tests/test_launcher_identify.py)
-
-
-class Classify(unittest.TestCase):
-    def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.dir = Path(self.tmp.name)
-
-    def tearDown(self):
-        self.tmp.cleanup()
-
-    def roles(self, *paths):
-        return {Path(i.path).name: (i.role, i.game, i.version) for i in classify.classify(paths)}
-
-    def keys(self):
-        path = self.dir / 'prod.keys'
-        path.write_text(KEYS)
-        return path
-
-    def test_files_by_their_title_ids_and_versions(self):
-        sp.nsp(self.dir / 'TOTK [0100F2C0115B6000][v0].nsp', [('0100F2C0115B6000', 'base', 0)])
-        sp.nsp(self.dir / 'v1.4.3 [0100F2C0115B6800][v720896][UPD].nsp', [('0100F2C0115B6800', 'update', 720896)])
-        sp.nsp(self.dir / '1.9.0 01007EF00011E800.nsz', [('01007EF00011E800', 'update', 1114112)])
-        self.keys()
-        (self.dir / 'title.keys').write_text('x = 00\n')
-        (self.dir / '._prod.keys').write_text('resource fork')
-        got = self.roles(self.dir)
-        self.assertEqual(got['TOTK [0100F2C0115B6000][v0].nsp'], ('base', 'totk', 0))
-        self.assertEqual(got['v1.4.3 [0100F2C0115B6800][v720896][UPD].nsp'], ('update', 'totk', 720896))
-        self.assertEqual(got['1.9.0 01007EF00011E800.nsz'], ('update', 'botw', 1114112))
-        self.assertEqual(got['prod.keys'][0], 'keys')
-        self.assertEqual(got['title.keys'][0], 'ignored')
-        self.assertNotIn('._prod.keys', got)
-
-    def test_keys_without_header_key_and_empty_files(self):
-        (self.dir / 'prod.keys').write_text('titlekek_00 = ' + '00' * 16 + '\n')
-        (self.dir / 'empty [0100F2C0115B6000].xci').write_bytes(b'')
-        got = self.roles(self.dir)
-        self.assertEqual(got['prod.keys'][0], 'ignored')
-        self.assertEqual(got['empty [0100F2C0115B6000].xci'][0], 'ignored')
-
-    def test_a_switch_2_dump_by_its_npdm(self):
-        exefs = self.dir / 'dump/updates/458752/exefs'
-        exefs.mkdir(parents=True)
-        npdm = bytearray(0x200)
-        npdm[:4] = b'META'
-        npdm[0x70:0x78] = (0x100).to_bytes(4, 'little') + (0x40).to_bytes(4, 'little')
-        npdm[0x100:0x104] = b'ACI0'
-        npdm[0x110:0x118] = int('040074A01BF12000', 16).to_bytes(8, 'little')
-        (exefs / 'main.npdm').write_bytes(bytes(npdm))
-        self.assertEqual(self.roles(self.dir / 'dump')['dump'], ('ns2_dump', 'dkb', None))
-
-    def test_plan_picks_the_newest_supported_update_and_needs_keys_and_fonts(self):
-        base = sp.nsp(self.dir / 'TOTK [0100F2C0115B6000][v0].nsp', [('0100F2C0115B6000', 'base', 0)])
-        old = sp.nsp(self.dir / 'TOTK [0100F2C0115B6800][v131072].nsp', [('0100F2C0115B6800', 'update', 131072)])   # 1.1.0: not built
-        new = sp.nsp(self.dir / 'TOTK [0100F2C0115B6800][v393216].nsp', [('0100F2C0115B6800', 'update', 393216)])   # 1.2.1
-        p = classify.plan(classify.classify([base, old, new, self.keys()]))
-        self.assertEqual((p.game, p.base, p.update), ('totk', str(base.resolve()), str(new.resolve())))
-        self.assertTrue(p.open_fonts and not any('system fonts' in b for b in p.blocks))   # an NSP has none: the open ones, silently (2026-11-20)
-        self.assertTrue(any(old.name in n for n in p.notes))
-        sp.nsp(base, [('0100F2C0115B6000', 'base', 0)], tickets=['0100F2C0115B6000'])   # without keys: its ticket's game
-        p = classify.plan(classify.classify([base]))
-        self.assertEqual(p.game, 'totk')
-        self.assertTrue(any('no keys' in b for b in p.blocks))
-
-    def test_messages_follow_the_window_s_language(self):
-        u = sp.nsp(self.dir / 'u.nsp', [('0100F2C0115B6800', 'update', 720896)])
-        keys = self.keys()
-        with mock.patch.dict(os.environ, {'MNG_LANG': 'zh'}):
-            self.assertIn('还没有游戏本体', classify.plan(classify.classify([u, keys])).blocks[0])
-        with mock.patch.dict(os.environ, {'MNG_LANG': 'en'}):
-            self.assertIn('no game', classify.plan(classify.classify([u, keys])).blocks[0])
-
-    def test_a_breath_of_the_wild_card_takes_the_open_fonts_too(self):
-        card = sp.xci(self.dir / 'BotW.xci', [('01007EF00011E000', 'base', 0), ('01007EF00011E800', 'update', 786432)])
-        p = classify.plan(classify.classify([card, self.keys()]))
-        self.assertEqual(p.game, 'botw')
-        self.assertTrue(p.open_fonts)   # its card holds no fonts: the open ones, no block (user 2026-11-20)
-        self.assertFalse(any('system fonts' in b or '系统字体' in b for b in p.blocks))
-
-    def test_plan_refuses_two_games(self):
-        a = sp.nsp(self.dir / 'a.nsp', [('0100F2C0115B6000', 'base', 0)])
-        b = sp.nsp(self.dir / 'b.nsp', [('01007EF00011E000', 'base', 0)])
-        p = classify.plan(classify.classify([a, b, self.keys()]))
-        self.assertIsNone(p.game)
-        self.assertIn('several games', p.blocks[0])
-
-    def test_plan_without_a_base(self):
-        u = sp.nsp(self.dir / 'u.nsp', [('0100F2C0115B6800', 'update', 720896)])
-        p = classify.plan(classify.classify([u, self.keys()]))
-        self.assertIn('an update alone', p.blocks[0])
-
-
-class Command(unittest.TestCase):
-    PLAN = dict(game='totk', base='/g/b.xci', keys='/k/prod.keys', update='/g/u.nsp', update_version=720896, dlc=[],
-                firmware=None, fonts='/f', blocks=[])
-
-    def test_arguments(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            script, argv, work, out, kind, game = build_job.command(dict(plan=self.PLAN, output_dir=tmp, work_root='/w'))
-        self.assertEqual((script, kind, game), (repo.BUILD_APP, 'full', 'totk'))
-        self.assertEqual(argv, ['/g/b.xci', '-k', '/k/prod.keys', '--update', '/g/u.nsp', '--shared-fonts', '/f',
-                                '--work', '/w/totk', '-o', str(Path(tmp) / 'Tears of the Kingdom.app')])
-
-    def test_without_a_work_root_the_one_folder_rule(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            apps = Path(tmp) / 'Applications'
-            _, argv, work, _, _, _ = build_job.command(dict(plan=self.PLAN, output_dir=str(apps), work_root=''))
-        self.assertEqual(work, Path(tmp) / 'MacNativeGames-work/totk')   # build_app.default_work: beside the apps folder
-
-    def app(self, tmp, work):
-        app = Path(tmp) / 'Applications/Tears of the Kingdom.app'
-        (app / 'Contents').mkdir(parents=True)
-        (app / 'Contents/Info.plist').write_bytes(plistlib.dumps({'MNGWorkFolder': str(work)}))
-        return app
-
-    def test_an_installed_app_of_the_same_version_takes_the_express_update(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            app = self.app(tmp, Path(tmp) / 'w')
-            up = dict(kind='express', game='totk', version='v143', work=str(Path(tmp) / 'w'))
-            with mock.patch.object(build_job, 'express_plan', return_value=up):
-                script, argv, work, out, kind, _ = build_job.command(dict(plan=self.PLAN, output_dir=str(app.parent), work_root='/w'))
-        self.assertEqual((script, argv, kind, out), (repo.UPDATE_RUNTIME, [str(app)], 'express', app))
-
-    def test_another_version_or_an_unknown_one_takes_the_full_build_into_the_same_app(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            app = self.app(tmp, Path(tmp) / 'w')
-            up = dict(kind='express', game='totk', version='v121', work=str(Path(tmp) / 'w'))
-            for plan in (self.PLAN, dict(self.PLAN, update_version=None)):
-                with mock.patch.object(build_job, 'express_plan', return_value=up):
-                    script, argv, work, out, kind, _ = build_job.command(dict(plan=plan, output_dir=str(app.parent), work_root='/elsewhere'))
-                self.assertEqual((script, kind, work), (repo.BUILD_APP, 'full', Path(tmp) / 'w'))   # the work folder the app records
-                self.assertEqual(argv[-1], str(app))
-
-    def test_an_update_of_an_installed_app_needs_no_files(self):
-        for kind, extra in (('express', []), ('fast', ['--seed'])):
-            with mock.patch.object(build_job, 'express_plan', return_value=dict(kind=kind, game='botw', work='/w/botw')):
-                script, argv, work, out, k, game = build_job.command(dict(update='/A/Breath of the Wild.app'))
-            self.assertEqual((script, argv, work, k, game),
-                             (repo.UPDATE_RUNTIME, ['/A/Breath of the Wild.app'] + extra, Path('/w/botw'), kind, 'botw'))
-        with mock.patch.object(build_job, 'express_plan', return_value=dict(kind='full', reason='other modules')), \
-                self.assertRaisesRegex(build_job.Refused, 'other modules'):
-            build_job.command(dict(update='/A/x.app'))
-
-    def test_a_blocked_plan_is_refused(self):
-        with self.assertRaises(build_job.Refused):
-            build_job.command(dict(plan=dict(game='totk', base='/b', blocks=['no keys']), output_dir='/o', work_root='/w'))
-
-    def test_a_dump_needs_no_keys(self):
-        plan = dict(game='dkb', base='/d', keys='/k', blocks=[])
-        _, argv, _, _, _, _ = build_job.command(dict(plan=plan, output_dir='/o', work_root='/w'))
-        self.assertNotIn('-k', argv)
-
-
-class Installed(unittest.TestCase):
-    def test_half_made_replaced_and_trashed_copies_are_left_out(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            for name in ('A.app', 'A.app.partial', 'A.app.replaced-12', '.Trash/A.app'):
-                (Path(tmp) / name / 'Contents').mkdir(parents=True)
-                (Path(tmp) / name / 'Contents/Info.plist').write_bytes(b'')
-            self.assertEqual([n for n in ('A.app', 'A.app.partial', 'A.app.replaced-12', '.Trash/A.app')
-                              if installed.usable(str(Path(tmp) / n))], ['A.app'])
-
-    def test_apps_are_asked_for_by_bundle_id_quickly(self):
-        # LaunchServices by bundle ID, not a dump of every app this Mac knows (that took 4.9 s, user 2026-11-12)
-        start = time.monotonic()
-        found = installed.registered({'com.apple.finder'})
-        self.assertIn('/System/Library/CoreServices/Finder.app', found)
-        self.assertLess(time.monotonic() - start, 2.0)
-        self.assertEqual(installed.registered({'org.macnativegames.nothing-has-this'}), [])
-
-    def test_every_game_s_bundle_is_looked_for(self):
-        ids = installed.bundle_ids()
-        for bundle in ('org.macnativegames.totk', 'org.macnativegames.botw', 'org.macnativegames.oot'):
-            self.assertIn(bundle, ids)
-
-    def test_the_launcher_s_own_list_comes_first_and_keeps_its_games(self):
-        # user 2026-11-18: "launcher 要自己 记住 不是靠 macOS 的应用索引 ... 优先自己记住，然后 靠 macOS 的应用索引"; that day
-        # LaunchServices named Tears of the Kingdom but not the Odyssey, Animal Crossing and Echoes of Wisdom next to it
-        with tempfile.TemporaryDirectory() as tmp:
-            def make(rel, bundle):
-                app = Path(tmp) / rel
-                (app / 'Contents').mkdir(parents=True)
-                (app / 'Contents/Info.plist').write_bytes(plistlib.dumps({'CFBundleIdentifier': bundle}))
-                return os.path.realpath(app)
-            totk = make('games/Tears of the Kingdom.app', 'org.macnativegames.totk')
-            odyssey = make('games/Super Mario Odyssey.app', 'org.macnativegames.odyssey')
-            oot = make('elsewhere/Ocarina of Time.app', 'org.macnativegames.oot')
-            botw = make('third/Breath of the Wild.app', 'org.macnativegames.botw')
-            make('games/Other.app', 'com.example.other')
-            known, last = Path(tmp) / 'known-apps.json', Path(tmp) / 'installed.json'
-            last.write_text(json.dumps({'apps': [{'app': oot}]}))
-            self.assertEqual(installed.known_apps(known, last), [oot])          # a first list from the window's last one
-            known.write_text(json.dumps({'apps': [oot, '/Volumes/not-connected/Old.app']}))
-            asked = []
-            plan = lambda app, python: {'game': Path(app).stem, 'kind': 'express'}
-            def macos(ids):
-                asked.append(True)
-                return [totk]                                                  # macOS leaves out what it leaves out
-            with mock.patch.object(installed, 'registered', side_effect=macos), \
-                 mock.patch.object(installed, 'plan', side_effect=plan):
-                found = sorted(a['app'] for a in installed.apps(known_file=known))
-            self.assertEqual(found, sorted([totk, odyssey, oot]))
-            kept = json.loads(known.read_text())['apps']
-            self.assertEqual(kept[:2], [oot, '/Volumes/not-connected/Old.app'])  # its own list first; a disk not connected stays
-            self.assertEqual(sorted(kept[2:]), sorted([totk, odyssey]))
-            with mock.patch.object(installed, 'registered', return_value=[]), \
-                 mock.patch.object(installed, 'plan', side_effect=plan):          # macOS forgets them all: still found
-                self.assertEqual(sorted(a['app'] for a in installed.apps(known_file=known)), sorted([totk, odyssey, oot]))
-            installed.remember([botw], known)                                  # a build adds its app
-            shutil.rmtree(Path(tmp) / 'elsewhere/Ocarina of Time.app')          # a deleted app leaves the list
-            installed.remember([], known)
-            kept = json.loads(known.read_text())['apps']
-            self.assertIn(botw, kept)
-            self.assertNotIn(oot, kept)
-
 
 class StepCounter(unittest.TestCase):
     def setUp(self):
@@ -345,7 +126,7 @@ class Run(unittest.TestCase):
         self.script.write_text(FAKE_BUILD)
         self.logs = mock.patch.object(build_job, 'LOGS', self.dir / 'logs')
         self.logs.start()
-        self.request = dict(plan=dict(game='dkb', base=str(self.dir), blocks=[]), output_dir=str(self.dir / 'out'),
+        self.request = dict(plan=dict(game='oot', base=str(self.dir), blocks=[]), output_dir=str(self.dir / 'out'),
                             work_root=str(self.dir / 'work'))
 
     def tearDown(self):
@@ -353,8 +134,8 @@ class Run(unittest.TestCase):
         self.tmp.cleanup()
 
     def events(self, mode='ok'):
-        (self.dir / 'work/dkb').mkdir(parents=True, exist_ok=True)
-        (self.dir / 'work/dkb/mode').write_text(mode)
+        (self.dir / 'work/oot').mkdir(parents=True, exist_ok=True)
+        (self.dir / 'work/oot/mode').write_text(mode)
         out = io.StringIO()
         code = build_job.run(self.request, Emitter(out), self.dir / 'history', script=self.script)
         return code, [json.loads(line) for line in out.getvalue().splitlines()]
@@ -370,7 +151,7 @@ class Run(unittest.TestCase):
         self.assertIn((300, 400), [(e.get('step_done'), e.get('step_total')) for e in events if e['event'] == 'progress'])
         self.assertEqual(events[-1]['event'], 'done')
         self.assertTrue(events[-1]['ok'])
-        steps = history.load(history.record_path(self.dir / 'history', 'dkb', 'macos'))
+        steps = history.load(history.record_path(self.dir / 'history', 'oot', 'macos'))
         self.assertEqual([n for n, _ in steps], ['rewrite-main', 'prepare-shader-seed'])
         _, again = self.events()   # the second build's bar comes from the first one's times
         self.assertTrue(again[0]['measured'])
@@ -387,8 +168,8 @@ class Run(unittest.TestCase):
         self.assertTrue(Path(done['log']).is_file())
 
     def test_a_cancel_stops_the_build_group(self):
-        (self.dir / 'work/dkb').mkdir(parents=True)
-        (self.dir / 'work/dkb/mode').write_text('slow')
+        (self.dir / 'work/oot').mkdir(parents=True)
+        (self.dir / 'work/oot/mode').write_text('slow')
         request = self.dir / 'request.json'
         request.write_text(json.dumps(self.request))
         runner = textwrap.dedent(f'''

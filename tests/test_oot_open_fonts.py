@@ -167,7 +167,7 @@ class SwitchTwoFonts(unittest.TestCase):
 
 
 class LauncherPlan(unittest.TestCase):
-    def test_a_bananza_dump_without_fonts_is_not_blocked(self):
+    def test_a_bananza_dump_is_outside_the_fork(self):
         with tempfile.TemporaryDirectory() as tmp:
             exefs = Path(tmp) / 'dump/updates/458752/exefs'
             exefs.mkdir(parents=True)
@@ -178,8 +178,8 @@ class LauncherPlan(unittest.TestCase):
             npdm[0x110:0x118] = int('040074A01BF12000', 16).to_bytes(8, 'little')
             (exefs / 'main.npdm').write_bytes(bytes(npdm))
             p = classify.plan(classify.classify([Path(tmp) / 'dump']))
-            self.assertEqual((p.game, p.blocks), ('dkb', []))
-            self.assertTrue(any('Noto' in n for n in p.notes), p.notes)
+            self.assertIsNone(p.game)
+            self.assertTrue(p.blocks)
 
     def test_a_nup_without_fonts_is_not_blocked_and_says_what_it_uses(self):
         with tempfile.TemporaryDirectory() as tmp:

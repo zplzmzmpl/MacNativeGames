@@ -22,13 +22,9 @@ Thanks for helping. This page says how the project works and what a pull request
 
 ## Repository layout
 
-- Tears of the Kingdom and Breath of the Wild share `games/totk`: one runtime, with switches for each game.
-- Code every game can use lives once in `shared/` (see [shared/README.md](shared/README.md)): today the FPS corner box and its texts, the interface language, the settings panel, and the app launcher's plumbing (`shared/app/app_launcher.h`). The Python of the ports MNG Launcher builds through their own `build.py` (Super Mario Odyssey, Animal Crossing, Echoes of Wisdom) shares `tools/port_app/`: the launcher's arguments, the work folder's venv and the express update's entry (`adapter.py`), and the packaging steps: clones, Info.plist, signing with the bundle ID as designated requirement, staging, Launch Services (`bundle.py`). Each game keeps its own steps, checks and tuning in its folder. A game uses it through relative symlinks at the paths its own copy had, so its includes and Makefile stay as they were. We are moving more of what the games have in common there, one part at a time; when you change a shared file, build and test every game that links it.
-- Every other game lives in `games/<name>/` and carries its own copy of everything else it builds and runs with: runtime, graphics layer, rewriter, shader translator (`prebuilt/`), and every script the build calls or imports. A change for one game never edits another game's files.
-  - Its build and scripts also never **read** another game's folder: no `../totk` or `../by3` paths in the Makefile, no importing or running another game's scripts, no copying another game's prebuilt tools. Copy what you need into your folder instead, and list where each copy came from (folder and commit), for example in `third_party/COPIES.md`. Otherwise a change to that game can break yours without anyone touching your files.
-  - Outside your folder, change only one line in the root README's update history. Ignore rules go in `games/<name>/.gitignore`, not the root one.
-  - Check before opening the PR: `git grep -nE '\.\./(totk|botw|by3)|games/(totk|botw|by3)' -- games/<name>` finds nothing but comments, and `git diff --stat origin/main -- . ':!games/<name>' ':!README.md'` is empty.
-- The NVN layer maps NVN semantics one by one (resources, shaders, state, draws, synchronization, presentation) and contains no camera, scene or gameplay decisions. Game-specific handling sits apart, says why it exists, is behind a switch, and is never needed for the game to run.
+- `games/oot` holds the Ocarina of Time runtime, game-specific tests, and build scripts. Record the origins of upstream copies in [third_party/COPIES.md](games/oot/third_party/COPIES.md).
+- Ocarina of Time links to the shared NVN backend in `games/totk/third_party/d2r_gfx` and reuses code from `shared/` and `zeldaVR/`. Keep those paths intact when synchronizing upstream changes.
+- The build and update entry points are `build_app.py` and `update_runtime.py`. The jobs in `tools/builder_jobs/` expose them to Launcher. Run `make check` for the shared and Ocarina regression suite.
 
 ## Picture quality and performance
 
@@ -77,13 +73,9 @@ Thanks for helping. This page says how the project works and what a pull request
 
 ## 仓库结构
 
-- 王国之泪和旷野之息共用 `games/totk`：一份运行时，按游戏加开关。
-- 所有游戏都能用的代码只放一份在 `shared/`（见 [shared/README.md](shared/README.md)）：目前是 FPS 角落面板和它的文字、界面语言、设置面板。游戏在自己原来那份的位置放一个相对符号链接指向它，include 和 Makefile 都不用改。各游戏共有的部分会一块一块挪进去；改共享文件时，要编译并测试每个链接它的游戏。
-- 其他游戏各自放在 `games/<名字>/`，除此之外构建和运行用到的东西都自带一份：运行时、图形层、改写器、着色器翻译器（`prebuilt/`），以及构建会调用或 import 的每个脚本。改一个游戏不动别的游戏的文件。
-  - 构建和脚本也**不读**别的游戏的目录：Makefile 里不写 `../totk`、`../by3` 这类路径，不 import 或调用别的游戏的脚本，不复制别的游戏的预编译工具。需要的东西复制进自己的目录，写明每份从哪个目录、哪个提交复制来的（例如 `third_party/COPIES.md`）。否则别的游戏一改，没人碰你的文件，你的游戏也可能坏掉。
-  - 自己目录以外只改根 README 更新历史里的一行。忽略规则写在 `games/<名字>/.gitignore`，不改根目录的。
-  - 开 PR 前自查：`git grep -nE '\.\./(totk|botw|by3)|games/(totk|botw|by3)' -- games/<名字>` 除了注释什么都搜不到，`git diff --stat origin/main -- . ':!games/<名字>' ':!README.md'` 是空的。
-- NVN 层逐项对应 NVN 语义（资源、着色器、状态、绘制、同步、出图），不写相机、场景或玩法判断。游戏专用的处理单独放、写明原因、用开关控制，不能成为游戏运行的前提。
+- `games/oot` 保存《时之笛》的运行时、游戏专用测试和构建脚本。来自上游的源码在 [third_party/COPIES.md](games/oot/third_party/COPIES.md) 记录来源。
+- 《时之笛》链接 `games/totk/third_party/d2r_gfx` 下的共享 NVN 后端，并使用 `shared/` 和 `zeldaVR/` 里的组件。同步上游时保留这些路径。
+- `build_app.py` 和 `update_runtime.py` 是构建和更新入口，Launcher 通过 `tools/builder_jobs/` 调用。用 `make check` 跑《时之笛》和共享组件的回归测试。
 
 ## 画质与性能
 

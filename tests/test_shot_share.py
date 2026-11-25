@@ -22,7 +22,7 @@ class ShotShareSourceTests(unittest.TestCase):
         """shared/runtime holds the one copy (2026-11-17); Tears of the Kingdom, Ocarina of Time and Super Mario Odyssey
         link it at their runtime/ paths."""
         for name in ('shot_upload.h', 'shot_tab.h', 'screenshot.h', 'board_upload.h', 'board_tab.h', 'nick_row.h'):
-            for game in ('totk', 'oot', 'odyssey'):
+            for game in ('totk', 'oot'):
                 with self.subTest(name=name, game=game):
                     link = GAMES / game / 'runtime' / name
                     self.assertTrue(link.is_symlink())
@@ -30,7 +30,7 @@ class ShotShareSourceTests(unittest.TestCase):
                     self.assertEqual(link.resolve(), (GAMES.parent / 'shared/runtime' / name).resolve())
 
     def test_mac_front_ends_share_and_the_ios_one_does_not(self):
-        for game in ('totk', 'oot', 'odyssey'):
+        for game in ('totk', 'oot'):
             with self.subTest(game=game):
                 front = (GAMES / game / 'runtime/frontend.m').read_text(encoding='utf-8')
                 self.assertIn('#include "shot_upload.h"', front)

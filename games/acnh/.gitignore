@@ -1,7 +1,0 @@
-# ACNH game-specific gitignore
-build/
-*.pyc
-__pycache__/
-*.dSYM
-*.o
-*.a

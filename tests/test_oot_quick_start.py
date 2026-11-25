@@ -313,13 +313,16 @@ class LauncherQuickStart(unittest.TestCase):
         def plan(app, python, work=None, env=None):
             seen['env'] = env
             return {'kind': 'express', 'work': '/w', 'game': 'oot'}
-        with mock.patch('tools.builder_jobs.installed.plan', plan), mock.patch.dict(os.environ, {'OOT_SHADERS': ''}):
-            script, argv, work, app, kind, game = self.build_job.command({'update': '/Apps/Ocarina of Time.app', 'quick': True})
-        self.assertEqual(seen['env']['OOT_SHADERS'], 'title')
-        self.assertEqual((kind, game), ('express', 'oot'))
-        with mock.patch('tools.builder_jobs.installed.plan', plan):
-            self.build_job.command({'update': '/Apps/Ocarina of Time.app'})
-        self.assertIsNone(seen['env'])   # an ordinary update is judged as before
+        with tempfile.TemporaryDirectory() as tmp:
+            app = Path(tmp) / 'Ocarina of Time.app'
+            (app / 'Contents').mkdir(parents=True)
+            (app / 'Contents/Info.plist').write_bytes(plistlib.dumps({'CFBundleIdentifier': 'org.macnativegames.oot'}))
+            with mock.patch('tools.builder_jobs.installed.plan', plan), mock.patch.dict(os.environ, {'OOT_SHADERS': ''}):
+                _, _, _, _, kind, game = self.build_job.command({'update': str(app), 'quick': True})
+                self.assertEqual(seen['env']['OOT_SHADERS'], 'title')
+                self.assertEqual((kind, game), ('express', 'oot'))
+                self.build_job.command({'update': str(app)})
+                self.assertIsNone(seen['env'])   # an ordinary update is judged as before
 
     # the window's half (the card's 快速启动 sends this request; a quick App shown as one): checked in MNG-Launcher, the
     # Launcher's own repository since 2026-11-20 (tests/test_porting_contract.py)

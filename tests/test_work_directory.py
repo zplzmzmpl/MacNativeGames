@@ -15,6 +15,7 @@ class WorkDirectoryTests(unittest.TestCase):
         source = root/'source'
         source.mkdir()
         (source/'requirements.txt').write_text('')
+        (root/'botw').mkdir()
         external = root/'shared-tooling'
         (external/'spirv-cross').mkdir(parents=True)
         (external/'spirv-cross/keep.txt').write_text('shared dependency must survive')
@@ -27,6 +28,7 @@ class WorkDirectoryTests(unittest.TestCase):
             (work/'totk').mkdir(parents=True)
             (work/'totk/tooling').symlink_to(external,target_is_directory=True)
             with mock.patch.object(build_app,'GAME',source), \
+                 mock.patch.object(build_app,'BOTW',root/'botw'), \
                  mock.patch.object(build_app,'run'), \
                  mock.patch.object(build_app,'git_fetch'):
                 tree=build_app.prepare_work(work,Path('/usr/bin/python3'),work/'logs')
@@ -45,6 +47,7 @@ class WorkDirectoryTests(unittest.TestCase):
                 if str(command[0])=='rsync':
                     subprocess.run([str(x) for x in command],check=True,capture_output=True)
             with mock.patch.object(build_app,'GAME',source), \
+                 mock.patch.object(build_app,'BOTW',root/'botw'), \
                  mock.patch.object(build_app,'run',side_effect=run), \
                  mock.patch.object(build_app,'git_fetch'):
                 tree=build_app.prepare_work(work,Path('/usr/bin/python3'),work/'logs')
@@ -63,6 +66,7 @@ class WorkDirectoryTests(unittest.TestCase):
                 if str(command[0])=='rsync':
                     subprocess.run([str(x) for x in command],check=True,capture_output=True)
             with mock.patch.object(build_app,'GAME',source), \
+                 mock.patch.object(build_app,'BOTW',root/'botw'), \
                  mock.patch.object(build_app,'run',side_effect=run), \
                  mock.patch.object(build_app,'git_fetch'):
                 (source/'a.c').write_text('branch one'); (source/'same.c').write_text('unchanged')
@@ -88,6 +92,7 @@ class WorkDirectoryTests(unittest.TestCase):
                 if str(command[0])=='rsync':
                     subprocess.run([str(x) for x in command],check=True,capture_output=True)
             with mock.patch.object(build_app,'GAME',source), \
+                 mock.patch.object(build_app,'BOTW',root/'botw'), \
                  mock.patch.object(build_app,'run',side_effect=run), \
                  mock.patch.object(build_app,'git_fetch'):
                 (source/'gfx').mkdir(); (source/'gfx/kept.m').write_text('both'); (source/'gfx/branch_only.m').write_text('one branch')
@@ -112,7 +117,7 @@ class WorkDirectoryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             root=Path(folder)
             source, external, work=self.fixture(root)
-            botw=root/'botw'; (botw/'assets').mkdir(parents=True)
+            botw=root/'botw'; (botw/'assets').mkdir()
             (botw/'assets/shader_list.tsv').write_text('rows')
             for name in ('botw.xci','botw-1.9.0.nsp','dlc/DLC1.NSP','prod.keys','title.tik','base.nsz','base.XCZ','x.nca','x.ncz'):
                 (botw/name).parent.mkdir(parents=True,exist_ok=True); (botw/name).write_text('game')

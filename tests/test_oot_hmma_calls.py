@@ -1,5 +1,4 @@
 """Real GPU HMMA output with and without callable helper preservation."""
-import ast
 from pathlib import Path
 import re
 import subprocess
@@ -15,18 +14,18 @@ from dev.game_slot import GameSlot
 @unittest.skipUnless(sys.platform=='darwin','requires Metal 4')
 class HmmaCalls(unittest.TestCase):
     def test_numerical_identity_and_chained_simd_barriers(self):
-        # Reuse the project's independently reconstructed PTX matrix layout.
-        tree=ast.parse((ROOT/'games/ss/runtime/gfx/tests/test_dmsh_hmma.py').read_text())
-        values={n.targets[0].id:ast.literal_eval(n.value) for n in tree.body if isinstance(n,ast.Assign)
-                and isinstance(n.targets[0],ast.Name) and n.targets[0].id in ('HEAD','HELPER','KERNEL')}
+        reference = (ROOT/'tests/hmma_reference.metal').read_text()
+        signature_start = reference.index('int dmsh_hmma16816_f16(')
+        head = reference[:signature_start]
+        signature = reference[signature_start:reference.index('\n{', signature_start)]
+        kernel = reference[reference.index('kernel void check('):]
         source=(ROOT/'games/oot/tools/totk_xlate/TensorMsl.cs').read_text()
         body=re.search(r'const string Body = """\n(.*?)\n""";',source,re.S)[1]
         qualifier=re.search(r'CallQualifier = "([^"]+)"',source)[1]
         names=[f'_{n}' for n in range(42961,42972)]
         for key,name in zip(('lane','blk','a0','a1','a2','a3','b0','b1','acc0','acc1','d1'),names):body=body.replace('%('+key+')s',name)
         body=body.replace('%(scr)s','_34').replace('%(rt)s','int').replace('%(dt)s','int')
-        signature=values['HELPER'].split('\n{')[0]
-        kernel=values['KERNEL'].replace('uint gid [[thread_position_in_grid]])','uint gid [[thread_position_in_grid]], constant uint& repetitions [[buffer(2)]])')
+        kernel=kernel.replace('uint gid [[thread_position_in_grid]])','uint gid [[thread_position_in_grid]], constant uint& repetitions [[buffer(2)]])')
         old='int d0 = dmsh_hmma16816_f16(l, blk, a0, a1, a2, a3, b0, b1, c0, c1, d1, scr);'
         new='int d0 = 0; for(uint iteration=0; iteration<repetitions; iteration++) { d0 = dmsh_hmma16816_f16(l, blk, a0, a1, a2, a3, b0, b1, c0, c1, d1, scr); c0=d0; c1=d1; }'
         self.assertIn(old,kernel);kernel=kernel.replace(old,new)
@@ -35,7 +34,7 @@ class HmmaCalls(unittest.TestCase):
             for name,attr,text in [('inline','static inline __attribute__((always_inline))',body),('call',qualifier,body),
                                    ('wrong-result',qualifier,body.replace('return as_type<int>(d0);','return as_type<int>(d0) ^ 1;'))]:
                 file,library=work/(name+'.metal'),work/(name+'.metallib')
-                file.write_text(values['HEAD']+'\n'+attr+signature+'\n'+text+'\n'+kernel)
+                file.write_text(head+'\n'+attr+' '+signature+'\n'+text+'\n'+kernel)
                 subprocess.run(['xcrun','-sdk','macosx','metal','-fmetal-math-mode=safe','-fpreserve-invariance','-fwrapv','-c',str(file),'-o',str(work/(name+'.air'))],check=True)
                 subprocess.run(['xcrun','-sdk','macosx','metallib',str(work/(name+'.air')),'-o',str(library)],check=True)
                 if name!='wrong-result':

@@ -23,7 +23,7 @@ def service_start(source):
 
 class NativeTranslatorOnly(unittest.TestCase):
     def test_every_copy_is_checked(self):
-        self.assertGreaterEqual(len(COPIES), 21)
+        self.assertIn(ROOT / 'games/oot/third_party/d2r_gfx/gfx/nvn/totk_shader_rt.m', COPIES)
         self.assertIn(ROOT / 'games/totk/third_party/d2r_gfx/gfx/nvn/totk_shader_rt.m', COPIES)
 
     def test_no_python_service_is_started(self):

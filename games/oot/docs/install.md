@@ -36,7 +36,7 @@ The work folder is `OcarinaOfTime_build` next to the dump. Keep it and the app o
 
 ## Build the app
 
-**1. This repository**: `git clone https://github.com/ly05010419/MacNativeGames.git` (or download the ZIP), then open Terminal in the `MacNativeGames` folder. If you already have it, run `git pull` first.
+**1. This repository**: `git clone https://github.com/zplzmzmpl/MacNativeGames.git` (or download the ZIP), then open Terminal in the `MacNativeGames` folder. If you already have it, run `git pull` first.
 
 **2. Build.** Put each path in quotes. Pick the app's final place now with `-o`; without it the app is written next to the dump.
 
@@ -77,16 +77,9 @@ Open the app from Finder. The game starts with its title movie and opening, as o
 
 ## Update the app
 
-- **New version of this repository** (after `git pull`): quit the game, then
+Quit the game and connect the external drive if it holds the build work folder. Open **MNG Launcher** and choose the express update on the Ocarina of Time card. Launcher reuses the build cache and prompts for the original files if it needs a full build. Your saves and settings are preserved.
 
-  ```sh
-  "$(plutil -extract MNGBuildPython raw "<the app>/Contents/Info.plist")" update_runtime.py "<the app>"
-  ```
-
-  from the `MacNativeGames` folder: the Python the app was built with (its virtual environment has the build's tools), and the update works in the work folder the app records (`MNGWorkFolder`) and prints which one. Pass `--work` only to move the work folder. An app that records none falls back to `OcarinaOfTime_build` next to it; see [Folders](../../../docs/install.md#folders) for where the work folder belongs and how to move an older install's. Settings → Update in the app runs the same update.
-
-  It rebuilds the runtime from this checkout and then the pipeline archive from the warm-up lists the app carries (render, compute and mesh pipelines), and reuses the shaders, in a few minutes; after a runtime change the archive is filled again (about 3 minutes on an M4). When it says the shaders need the full build, run the `build_app.py` command of [Build the app](#build-the-app) again: the work folder keeps everything else.
-- Your saves and settings are not changed by either.
+Launcher uses its bundled source. To apply a new commit from this fork, install a Launcher build that includes it. [Launcher maintenance guide](../../../maintenance.zh-CN.md)
 
 ## When the build stops
 

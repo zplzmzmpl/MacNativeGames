@@ -1,4 +1,4 @@
-name: Source regressions
+name: Ocarina of Time regressions
 
 on:
   push:
@@ -9,36 +9,7 @@ permissions:
   contents: read
 
 jobs:
-  source:
-    name: Source tests (${{ matrix.group }})
-    runs-on: macos-latest
-    # Each AppKit settings case is bounded, but running every variant on a hosted VM can exceed ten minutes.
-    timeout-minutes: ${{ matrix.group == 'settings' && 20 || 15 }}
-    strategy:
-      fail-fast: false
-      matrix:
-        group: [core, settings]
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          persist-credentials: false
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
-        with:
-          python-version: '3.14'
-          cache: pip
-          cache-dependency-path: |
-            games/totk/requirements.txt
-            tools/deps/pins.py
-      - name: Install build-tool test dependencies
-        run: |
-          UI_PYTHON="$(python tools/deps python ui-pack)"
-          "$UI_PYTHON" -m pip install -r games/totk/requirements.txt
-          echo "MNG_TEST_PYTHON=$UI_PYTHON" >> "$GITHUB_ENV"
-      - name: Run synthetic container, update and native path tests
-        run: '"$MNG_TEST_PYTHON" .github/run_source_tests.py ${{ matrix.group }}'
-
-  launcher-distribution:
-    name: Launcher local-build regressions
+  test:
     runs-on: macos-26
     timeout-minutes: 15
     env:
@@ -50,29 +21,7 @@ jobs:
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.14'
-      - name: Install build-tool test dependencies
-        run: python -m pip install -r games/totk/requirements.txt
-      - name: Test portable source and local ZIP packaging
-        run: python -m unittest discover -s tests -p 'test_launcher_*.py' -v
-
-  test:
-    needs: [source, launcher-distribution]
-    if: ${{ always() }}
-    runs-on: macos-latest
-    timeout-minutes: 10
-    steps:
-      - name: Require all source test groups
-        env:
-          SOURCE_RESULT: ${{ needs.source.result }}
-          LAUNCHER_RESULT: ${{ needs.launcher-distribution.result }}
-        run: |
-          test "$SOURCE_RESULT" = success
-          test "$LAUNCHER_RESULT" = success
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          persist-credentials: false
-      # UBSan only: on macOS 26 an AddressSanitizer build of this test hangs in dyld before main
-      # (AsanInitInternal -> StaticSpinMutex::LockSlow), which would hold the job until its timeout.
-      # The C test list lives in the root Makefile (C_TESTS); keep CI and `make check` in lockstep.
-      - name: Check C unit tests with the undefined-behavior sanitizer
-        run: make check-c
+      - name: Install shared test dependencies
+        run: python -m pip install -r games/totk/requirements.txt -r games/oot/requirements.txt
+      - name: Run Ocarina and shared regressions
+        run: make check

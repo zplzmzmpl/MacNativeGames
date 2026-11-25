@@ -1,53 +1,12 @@
 #!/usr/bin/env python3
-"""MacNativeGames: turn your own XCI or NSP into a native Mac app or iPhone/iPad IPA.
+"""Build Ocarina of Time v131072 from your own Switch 2 export.
 
-    python3 build_app.py <game.xci|game.nsp> -k <prod.keys> [--platform macos|ios|visionos] [-o <output>] [--work <folder>]
-                         [--update <update.nsp>] [--dlc <dlc.nsp> ...] [--mod <mod folder> [--install-mod-romfs]]
-
-Supported: TOTK base 1.0.0 (0100F2C0115B6000), XCI or NSP; optional --update with a supported cumulative update.
-Also Breath of the Wild (01007EF00011E000, games/botw), in two forms: 1.6.0 as one card image holding the base game, the update
-and the add-on content, which needs --shared-fonts (the six .bfttf files a Tears of the Kingdom build extracted into its work
-folder, extracted/firmware/shared-fonts); or 1.9.0 as a base NSP with --update <the 1.9.0 update NSP> and fonts from --firmware
-or --shared-fonts as for a Tears of the Kingdom NSP. A card image may also hold the 1.9.0 update (PR #682): the version is
-then told by its verified ExeFS hashes. With a separate update (1.9.0, or the 1.6.0 update NSP) the add-on content
-(DLC) comes from --dlc <pack.nsp>, repeated for the two packs (01007EF00011F001, 01007EF00011F002), each one optional and
-checked against its pin; a card image brings its own. Its startup shaders come from its game data and its own shared shader list
-(games/botw/assets/shader_list.tsv). The game is recognised by the title IDs in the file, never by the file name.
-NSPs need common tickets (unless rights-free) and a separate shared-font source. iOS builds are unsigned IPAs for sideloading and require Xcode 26+ and network access to fetch pinned tools and build device libraries.
-Nothing from the game is in this repository; everything is made from your files on your Mac. Key values are never printed.
-
-Steps (each one checked against games/totk/assets/expected-v<version>.json, so a damaged dump or another version stops the
-build at the first wrong file; a different dump of the same version is accepted — main.npdm by Nintendo's ACID
-signature, or signed again by a dump tool once all four code modules match, shared fonts by valid BFTTF structure):
-  1. code: ExeFS out of the XCI or NSP, a mod's main-module code patches merged when --mod is given
-     (games/totk/scripts/mod_exefs.py, after checking them against the sites the app patches itself,
-     games/totk/scripts/patch_sites.py), the three code modules rewritten for Apple silicon
-     (games/totk/third_party/d2r)
-  2. data: RomFS (17 GB), the system shared fonts (from XCI firmware or an explicit font source), the RomFS overlays
-  3. shaders: SPIRV-Cross (fetched at a pinned commit, compiled with clang) and the shader translator, which ships
-     ready-made as a native program (games/totk/prebuilt/macos-arm64: vendor/ryujinx + patches + Service.cs, made with
-     games/totk/tools/totk_xlate/publish_native.sh); startup shaders are extracted from your selected RomFS and
-     translated into a bundled seed, ready for GPU warm-up even with an empty cache on the first launch
-  4. the game binary and either a macOS app bundle or an unsigned iPhone/iPad IPA (large game data is cloned when possible);
-     for the Mac the startup shaders are then compiled once into this Mac's Metal cache (about 12 minutes for 1.4.3 on an M4 Max), so the
-     first start does not compile them in the background (games/totk/tools/warm_metal_cache.m); with --mod
-     --install-mod-romfs the player's mod folder for this version is replaced by the mod's RomFS files and its manifest
-     (games/totk/scripts/mod_folder.py, games/totk/scripts/make_mod_manifest.py), so the build is playable with the mod as
-     it stands - the flag is required because that folder may hold files of the player's own (they are kept next to it
-     as <version>.backup-<date>-<time>)
-
-Every intermediate file is in the work folder (default: the one the app at -o records, else
-<the folder above the apps folder>/MacNativeGames-work/<game>, as MNG Launcher uses; default_work); a second run reuses
-what is already done and correct. A newer runtime from this repository goes into an app this script made without its game files:
-update_runtime.py "<the app>". Mac saves, shader cache and logs go to the user's Library folders; iOS keeps saves
-and the writable shader cache in the app's Documents container.
-
-Needs for Mac: macOS 26 or later on Apple silicon, the Xcode command line tools and Python 3.14 (python.org's installer,
-    or Homebrew's python@3.14). opus, libvpx and dav1d are built from pinned sources by the build itself.
-For iPhone/iPad: Xcode 26+ with iOS/Metal toolchains (XcodeGen, CMake and Ninja are pinned downloads of the build).
-Optional: Xcode's Metal toolchain (xcodebuild -downloadComponent MetalToolchain) compiles the startup shaders into the
-app, so moving or rebuilding it does not repeat that work at launch.
+The input is a .nup or a directory with base/ and updates/131072/.
+Use --work to choose the build cache and -o for the final app.
+The macOS build needs Xcode with the Metal toolchain.
+See games/oot/docs/install.md for the build and Launcher update instructions.
 """
+
 import argparse, concurrent.futures, ctypes, errno, glob, hashlib, itertools, json, os, platform, plistlib, shutil, stat, struct, subprocess, sys, threading, time
 from pathlib import Path
 
@@ -64,11 +23,7 @@ UPDATES = ('v121', 'v143')
 # update and the add-on content; 1.9.0 as a base NSP plus the 1.9.0 update NSP, or a card image holding that update. The game is
 # chosen by the title IDs of the NCAs in the game file, never by its name.
 BOTW = REPO / 'games/botw'
-BOTW160 = json.loads((BOTW / 'assets/expected-v1.6.0.json').read_text())
-BOTW190 = json.loads((BOTW / 'assets/expected-v1.9.0.json').read_text())
-BOTW_LIST = BOTW / 'assets/shader_list.tsv'   # the game's shared shader list (docs/shader-list.md)
-VERSIONS['botw160'] = BOTW160
-VERSIONS['botw190'] = BOTW190
+BOTW_LIST = BOTW / 'assets/shader_list.tsv'
 TITLES = {'0100F2C0115B6000': 'totk', '01007EF00011E000': 'botw'}
 # Per game: app name, bundle identifier, executable name (= the player's data folder under
 # ~/Library/Application Support/MacNativeGames, games/totk/runtime/game_version.h GAME_FOLDER)
@@ -77,15 +32,7 @@ APPS = {'totk': ('Tears of the Kingdom', 'org.macnativegames.totk', 'TOTK'), 'bo
 # dumpers write it; no keys): the title ID in its main.npdm picks the game. Per game: the work folder name of its version
 # (runtime/game_version.h TOTK_GAME_DIR), its repository folder (expected values, shared shader list) and the defines
 # its launcher is compiled with. The app's executable is the player's data folder name (game_version.h GAME_FOLDER).
-POKOPIA = REPO / 'games/pokopia'
-NS2 = {'0400A3A01EE4C000': dict(version='pkp', folder=POKOPIA, update='655360', expected='expected-v2.0.1.json',
-                                depth_mode='zero', defines=['-DGAME_POKOPIA=1', '-DGAME_NS2=1']),
-       '040074A01BF12000': dict(version='dkb', folder=REPO / 'games/dkb', update='458752', expected='expected-v458752.json',
-                                depth_mode='minus-w', defines=['-DGAME_DKB=1', '-DGAME_NS2=1'])}
-for _g in NS2.values():
-    VERSIONS[_g['version']] = json.loads((_g['folder'] / 'assets' / _g['expected']).read_text())
-APPS['pkp'] = ('Pokémon Pokopia', 'org.macnativegames.pokopia', 'Pokopia')
-APPS['dkb'] = ('Donkey Kong Bananza', 'org.macnativegames.bananza', 'Bananza')
+NS2 = {}
 
 
 def ns2_game(version):
@@ -3399,56 +3346,25 @@ def mac_game_data(args, device_app):
 
 
 def parse_args(argv):
-    ap = argparse.ArgumentParser(description='Build a native Mac app or unsigned iPhone/iPad IPA from TOTK base 1.0.0 (XCI/NSP), optionally with the separate 1.2.1 or 1.4.3 update; or a Mac app from Breath of the Wild: a combined 1.6.0 card image, or a base NSP with its separate 1.6.0 or 1.9.0 update NSP and optional add-on content NSPs (--dlc).',
-                                 epilog='example: python3 build_app.py ~/Games/totk.xci -k ~/keys/prod.keys')
-    ap.add_argument('game', type=Path, help='the game file (.xci or .nsp), base game 1.0.0 (Breath of the Wild: the 1.6.0 card image, or the base NSP with --update); '
-                    'or a Switch 2 dump folder (base/, updates/<version>/ with exefs/ and romfs/: Pokemon Pokopia 2.0.1)')
-    ap.add_argument('--update', type=Path, help='separate supported cumulative update NSP/NSZ; outputs the same single app (Breath of the Wild: the 1.9.0 update NSP, not for a card image)')
-    ap.add_argument('--dlc', type=Path, action='append', metavar='DLC.nsp', help='Breath of the Wild with a separate 1.6.0 or 1.9.0 --update: an add-on content (DLC) NSP; repeat for the second pack (01007EF00011F001, 01007EF00011F002); each is optional, and a pack left out is not in the app; such a build takes its packs from --dlc only, also when the game file is a card image')
-    ap.add_argument('--platform', choices=('macos','ios','visionos'), default='macos', help='build a macOS app (default), unsigned iPhone/iPad IPA, or native Vision Pro IPA')
-    ap.add_argument('--ios-game-data', choices=('app', 'documents'), default='app',
-                    help='iOS: carry the 17 GB RomFS image in the IPA (default), or leave it out for the app\'s Documents/GameData '
-                         '(ios/tools/install_device.py --game-data copies it there once; later builds install in minutes)')
-    ap.add_argument('--device-gpu', action='append', metavar='ARCH',
-                    help='iOS: compile the pipeline archive on this Mac for this GPU (applegpu_g14p for an iPhone 14; repeat for '
-                         'more; none: no archive). Default: the GPUs of the iPhones / iPads on the cable. The first start then '
-                         'needs no fill before the title (about 10 minutes on an iPhone 14); the app is about 430 MB larger per GPU')
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument('game', type=Path, help='Ocarina of Time .nup or an extracted Switch 2 dump directory, including v131072')
+    ap.add_argument('-o', '--out', type=Path, help='the app or IPA to write')
+    ap.add_argument('--work', type=Path, help='build work folder (defaults to the work folder recorded by the app)')
+    ap.add_argument('--platform', choices=('macos', 'ios'), default='macos')
+    ap.add_argument('--ios-game-data', choices=('app', 'documents'), default='app')
+    ap.add_argument('--device-gpu', action='append', metavar='ARCH')
     ap.add_argument('--mac-game-data', choices=('app', 'library'), default='app',
-                    help='Mac: carry the 16 GB RomFS image in the app (default), or keep it in ~/Library/Application Support/'
-                         'MacNativeGames/<TOTK|BotW>/GameData/<version>, put there once (the app is then a few hundred MB, '
-                         'and copies to another Mac without it)')
+                    help='keep the 26 GB RomFS in the app (default) or in the user Library')
     ap.add_argument('--mac-game-data-folder', type=Path, metavar='FOLDER',
-                    help='Mac: keep the RomFS image in FOLDER/<version> instead (implies --mac-game-data library), for example '
-                         'on another disk; the app remembers the folder, and the launcher falls back to the default one '
-                         '(on another Mac, say) when FOLDER has no complete image')
-    ap.add_argument('-k', '--keys', type=Path, help='your prod.keys (an XCI or NSP; a Switch 2 dump folder needs none)')
-    ap.add_argument('-o', '--out', type=Path, help='the app or IPA to write (default depends on --platform; next to the game file)')
-    ap.add_argument('--work', type=Path, help='work folder (default: the one the app at -o records, else '
-                    '<the folder above the apps folder>/MacNativeGames-work/<game>; docs/install.md, Folders)')
-    ap.add_argument('--mod', type=Path, metavar='FOLDER',
-                    help='a mod folder prepared before the build: its exefs/ IPS / IPS32 / pchtxt patches for the main '
-                         'module are merged into the code before it is rewritten (its romfs/ goes in with '
-                         '--install-mod-romfs; docs/mods.md)')
-    ap.add_argument('--install-mod-romfs', action='store_true',
-                    help='with --mod: at the end of the build, replace <data>/mods/<version> with the mod\'s romfs/ '
-                         'and its manifest.tsv, so the app plays with the mod. That folder is the player\'s: what it '
-                         'held is moved next to it as <version>.backup-<date>-<time>, not deleted. Without this flag '
-                         'the build leaves the folder alone and prints the two commands that fill it by hand')
-    ap.add_argument('--shader-cache', type=Path, help=argparse.SUPPRESS)   # removed: the seed comes from the game data and the shared list
-    ap.add_argument('--no-shader-reminder', action='store_true', help='no longer used (2026-11-10: the devices contribute their shaders on their own); kept so older commands still run')
-    ap.add_argument('--native-4k', action=argparse.BooleanOptionalAction, default=None,
-                    help='Mac, Tears of the Kingdom 1.4.3 / 1.2.1 and Breath of the Wild: the settings panel also offers native 4K (a 3840x2160 canvas, UI and scene); the game then '
-                         'reserves its swapchain and texture heaps for 4K (about 1.4 GiB more memory, whatever is shown). '
-                         'On by default on a Mac with 16 GB of memory or more; --no-native-4k turns it off')
-    ap.add_argument('--native-5k', action=argparse.BooleanOptionalAction, default=None,
-                    help='Mac, Tears of the Kingdom 1.4.3 and Breath of the Wild 1.6.0 / 1.9.0: include native 5120x2880 canvas, UI and scene, plus the 4K modes; '
-                         'on by default with 32 GB of memory or more. --no-native-5k leaves it out. '
-                         'Reserves the larger game heaps at every start, whatever resolution is selected')
-    ap.add_argument('--vr', action='store_true',
-                    help='Mac VR: Tears of the Kingdom 1.4.3 with native 4K, or our Breath of the Wild stereo renderer (zeldaVR/install_vr.sh passes it)')
-    fonts = ap.add_mutually_exclusive_group()
-    fonts.add_argument('--firmware', type=Path, help='unpacked firmware NCA directory providing the six expected shared fonts (needed for NSP unless --shared-fonts or valid cached fonts are available; Breath of the Wild 1.9.0 too)')
-    fonts.add_argument('--shared-fonts', type=Path, help='previously extracted shared-font directory containing the six verified .bfttf files')
+                    help='keep the RomFS in a custom folder outside the app')
+    ap.add_argument('--shared-fonts', type=Path, help='folder containing the six verified shared fonts')
+    # Keep the existing Ocarina input validation for arguments from older front ends.
+    ap.add_argument('--update', type=Path, help=argparse.SUPPRESS)
+    ap.add_argument('--dlc', type=Path, action='append', help=argparse.SUPPRESS)
+    ap.add_argument('--mod', type=Path, help=argparse.SUPPRESS)
+    ap.add_argument('--vr', action='store_true', help=argparse.SUPPRESS)
+    ap.add_argument('--native-4k', action=argparse.BooleanOptionalAction, help=argparse.SUPPRESS)
+    ap.add_argument('--native-5k', action=argparse.BooleanOptionalAction, help=argparse.SUPPRESS)
     return ap.parse_args(argv)
 
 
@@ -3469,7 +3385,7 @@ def build_oot(args, source):
 
 
 def check_nup(source):
-    """The game of a .nup, from its package table (#2333); only Ocarina of Time 2.0.0 and Bananza 3.2.0 are built from one."""
+    """Identify the supported Ocarina of Time version from the package table."""
     from tools import nup_title
     try:
         title, versions = nup_title.read(source)
@@ -3477,279 +3393,20 @@ def check_nup(source):
         raise BuildError(f'{source.name}: cannot read this .nup: {e}') from e
     if not nup_title.builds(title, versions):
         have = ', '.join(nup_title.version_name(v, title) for v in versions)
-        raise BuildError(f'{source.name}: title {title} version {have}; only Ocarina of Time '
-                         f'{nup_title.version_name(nup_title.OOT_VERSION)} and Donkey Kong Bananza 3.2.0 '
-                         f'(v{nup_title.BANANZA_VERSION}) are built from a .nup')
+        raise BuildError(f'{source.name}: title {title} version {have}; this fork builds only Ocarina of Time '
+                         f'{nup_title.version_name(nup_title.OOT_VERSION)} from a .nup')
     return title
 
 
 def main(argv):
+    from tools import nup_title
     args = parse_args(argv)
-    if args.game.suffix.lower() == '.nup':
-        from tools import nup_title
-        source = args.game.expanduser().resolve()
-        title = check_nup(source)
-        return build_oot(args, source) if title == nup_title.OOT_TITLE else main_ns2(args, source)
-    if args.game.expanduser().is_dir():   # a Switch 2 dump folder
-        return main_ns2(args, args.game.expanduser().resolve())
-    if not args.keys:
-        raise BuildError('-k / --keys <your prod.keys> is needed for an XCI or NSP')
-    device_app = args.platform in ('ios', 'visionos')
-    game, keys = args.game.expanduser().resolve(), args.keys.expanduser().resolve()
-    if not game.is_file():
-        raise BuildError(f'no such file: {game}')
-    if not keys.is_file():
-        raise BuildError(f'no such file: {keys}')
-    out = (args.out.expanduser().resolve() if args.out else game.parent / (f'{APP_NAME}.ipa' if device_app else f'{APP_NAME}.app'))
-    work, why = (args.work.expanduser().resolve(), 'given with --work') if args.work else default_work(out, 'totk')
-    if out.suffix.lower() not in (('.ipa', '.app') if device_app else ('.app',)):   # iOS .app: unsigned folder for install_device.py
-        raise BuildError(f'the {args.platform} output must end in {".ipa or .app" if device_app else ".app"}: {out}')
-    kind = input_kind(game)
-    if kind not in ('xci', 'nsp'):
-        raise BuildError('the base game must be an uncompressed XCI or NSP; NSZ is supported for update packages')
-    update = args.update.expanduser().resolve() if args.update else None
-    if update and (not update.is_file() or input_kind(update) not in ('nsp', 'nsz')):
-        raise BuildError('--update must be a separate cumulative NSP or NSZ')
-    mod = args.mod.expanduser().resolve() if args.mod else None
-    if mod and not ((mod / 'exefs').is_dir() or (mod / 'romfs').is_dir()):
-        raise BuildError(f'--mod expects a mod folder prepared before the build (its files under exefs/ and/or romfs/): '
-                         f'{mod} has neither. See docs/mods.md.')
-    if args.install_mod_romfs and not mod:
-        raise BuildError('--install-mod-romfs fills the player\'s mod folder from a mod\'s romfs/, so it needs --mod '
-                         '<mod folder>; nothing was written')
-    if args.install_mod_romfs and not (mod / 'romfs').is_dir():
-        raise BuildError(f'--install-mod-romfs installs {mod.name}/romfs into the player\'s mod folder, and this mod has '
-                         f'none; leave the flag out to merge its code patches only')
-    args.mac_game_data, game_data_folder = mac_game_data(args, device_app)
-    if args.install_mod_romfs and device_app:
-        raise BuildError('an iPhone / iPad / Vision Pro build loads no player mod folder, so --install-mod-romfs has nothing to fill: '
-                         'build the Mac app (leave out --platform ios) to install a mod\'s RomFS')
-    code_mod = mod if mod and (mod / 'exefs').is_dir() else None   # a data-only mod has no code to merge
-    dlcs = list(dict.fromkeys(d.expanduser().resolve() for d in args.dlc or []))
-    for dlc in dlcs:
-        if not dlc.is_file() or input_kind(dlc) != 'nsp':
-            raise BuildError(f'--dlc must be an add-on content NSP: {dlc}')
-    version = 'v0'
-    firmware = args.firmware.expanduser().resolve() if args.firmware else None
-    shared_fonts = args.shared_fonts.expanduser().resolve() if args.shared_fonts else None
-    if firmware and not firmware.is_dir():
-        raise BuildError(f'no firmware directory: {firmware}')
-    if shared_fonts:
-        font_report(shared_fonts)
-    no_fonts = BuildError('NSP files do not include system shared fonts. Supply --firmware <unpacked firmware NCA directory> '
-                          'or --shared-fonts <previously extracted font directory>; valid fonts in --work are also reused.')
-    fonts_given = firmware or shared_fonts or fonts_valid(work / 'totk/extracted/firmware/shared-fonts')
-    if kind == 'nsp' and not (fonts_given or (not args.work and fonts_valid(default_work(out if args.out else game.parent / f'{APPS["botw"][0]}.app', 'botw')[0] / 'totk/extracted/firmware/shared-fonts'))):   # Breath of the Wild's default work folder
-        raise no_fonts
-    py = prerequisites(args)
-    def existing_volume_path(path):
-        path=path.resolve()
-        while not path.exists(): path=path.parent
-        return path
-    logs = work / 'logs'
-    env = dict(os.environ, PATH=os.pathsep.join(TOOL_PATHS + [os.environ.get('PATH', '/usr/bin:/bin:/usr/sbin:/sbin')]))
-    t0 = time.time()
-    fresh_work = not work.exists()
-    # The game decides the platforms, the work folder and the disk space needed, so it is identified before those checks.
-    tree = prepare_work(work, py, logs)
-    which = identify_game(tree, game, keys, logs)
-    if args.native_5k and which not in ('totk', 'botw'):
-        raise BuildError('--native-5k is only available for Tears of the Kingdom 1.4.3 and Breath of the Wild on Mac')
-    if kind == 'nsp' and which != 'botw' and not fonts_given:   # only Breath of the Wild's fonts passed the check above
-        raise no_fonts
-    if dlcs and which != 'botw':
-        raise BuildError(f'{APPS[which][0]} has no DLC support: leave out --dlc')
-    if which == 'botw':
-        if args.vr and args.platform != 'macos':
-            raise BuildError('--vr needs a Mac build')
-        if args.platform == 'visionos':
-            raise BuildError('Breath of the Wild has no native Vision Pro build yet: use --platform macos or ios')
-        if not args.out:
-            out = game.parent / f'{APPS["botw"][0]}.{"ipa" if args.platform == "ios" else "app"}'
-        if fresh_work and not args.work:   # the default work folder of Breath of the Wild, not of Tears of the Kingdom
-            shutil.rmtree(work)
-        if args.install_mod_romfs:
-            raise BuildError('--install-mod-romfs is only wired for Tears of the Kingdom so far: copy a Breath of the Wild mod\'s '
-                             'RomFS files into ~/Library/Application Support/MacNativeGames/BotW/mods/botw190 (botw160 for 1.6.0) and write its '
-                             'manifest.tsv (docs/mods.md)')
-        if not args.work:
-            work, why = default_work(out, 'botw')
-            logs = work / 'logs'
-            tree = prepare_work(work, py, logs)
-        check_package(game, 'botw', 'base')
-        if update:
-            check_package(update, 'botw', 'update')
-        elif kind != 'xci':
-            raise BuildError('Breath of the Wild from a base NSP needs the 1.9.0 update (or the 1.6.0 update): pass it with '
-                             '--update <update.nsp> (a card image already holds its update)')
-        check_dlc(dlcs, BOTW190)   # the files first; the packs are the same for both versions
-        if update:   # the base game (NSP or XCI) with the separate 1.6.0 or 1.9.0 update
-            update = prepare_update_container(tree, update, keys, logs)
-            version = identify_botw_update(tree, update, keys, logs)
-        else:   # a combined card image: base, its 1.6.0 or 1.9.0 update and add-on content (PR #682)
-            version = identify_botw_card(tree, game, keys, logs)
-        if dlcs and not update:
-            raise BuildError('a Breath of the Wild card image holds its own add-on content, so leave out --dlc (or pass the base NSP '
-                             'as the game file with --update <update.nsp>)')
-        expected = VERSIONS[version]
-        if shutil.disk_usage(existing_volume_path(work.parent if work.parent.exists() else game.parent)).free / 2**30 < 22 and \
-                not (work / f'totk/extracted/{version}/romfs/romfs.bin').exists():
-            raise BuildError('needs about 22 GB free for the work folder (the app itself is an APFS clone of it when on the same volume)')
-        if args.shader_cache:
-            say('--shader-cache is no longer needed: the startup shaders come from the game data and the shared shader list (games/botw/assets/shader_list.tsv)')
-        botw = work / 'botw'
-        say(f'Breath of the Wild {expected["display_version"]}; work folder {work}')
-        if args.native_4k and args.platform != 'macos':
-            raise BuildError('--native-4k is for a Mac build (iPhone / iPad have no 4K output)')
-        if args.native_5k and args.platform != 'macos':
-            raise BuildError('--native-5k needs a Mac build')
-        if args.native_5k and args.native_4k is False:
-            raise BuildError('--native-5k includes native 4K; omit --no-native-4k')
-        native_5k = native_5k_enabled(args.platform, version, args.native_5k, args.native_4k)
-        native_4k = True if native_5k else args.native_4k if args.native_4k is not None else args.platform == 'macos' and native_4k_default()
-        if args.platform == 'macos':   # as Tears of the Kingdom (user 2026-11-01): the heaps are sized for 4K at every start
-            say('native 4K: ' + ('on' if native_4k else 'off') + ('' if args.native_4k is not None else
-                ' (this Mac has ' + ('16 GB or more' if native_4k else 'less than 16 GB') + ' of memory; --native-4k / --no-native-4k decide)'))
-            say('native 5K: ' + ('on (5120x2880 canvas and scene)' if native_5k else 'off'))
-        step_code_botw(tree, botw, update or game, keys, env, logs, version=version, mod=code_mod)
-        step_data_botw(tree, botw, game, keys, logs, version=version, update=update, dlc=dlcs, firmware=firmware, shared_fonts=shared_fonts,
-                       app=out if out.suffix == '.app' else None)
-        step_shaders_botw(tree, botw, logs, version=version)
-        if not device_app:   # the Mac app's metallibs; build_ipa.py compiles the device's own (6 of a 21-minute iPhone build, 2026-10-28)
-            step_shader_libs(tree, logs, version=version)
-        # The work folder's copy of games/botw (prepare_work), relative: make splits a path with spaces into several targets
-        step_binary(tree, game, keys, {**env, 'SHADER_LIST': '../botw/assets/shader_list.tsv'}, logs, version=version, title='01007ef00011e000')
-        say(f'4/4 app: assembling {out}')
-        if device_app:   # the same IPA tooling as Tears of the Kingdom (ios/tools/build_ipa.py --version botw160 / botw190)
-            build_device_translator(tree, logs)
-            run([py, 'ios/tools/build_ipa.py', '--tree', tree, '--out', out, '--version', version,
-                 '--logs', logs, '--app-name', APPS['botw'][2], '--bundle-id', APPS['botw'][1],
-                 *(['--image-outside'] if args.ios_game_data == 'documents' else []),
-                 *[x for g in args.device_gpu or [] for x in ('--device-gpu', g)]], logs / 'build-ipa.log', cwd=tree, env=env)
-            say_device_pipelines(logs)
-            say(f'done in {(time.time() - t0) / 60:.0f} min: {out}')
-            say('Install it with games/totk/ios/tools/install_device.py' + (f' --game-data {tree}/extracted/{version}/romfs/romfs.bin'
-                if args.ios_game_data == 'documents' else '') + '; saves and the shader cache stay in the app\'s Documents.')
-            return
-        step_app(tree, out, logs, version=version, game='botw', game_data=args.mac_game_data, game_data_folder=game_data_folder,
-                 native_4k=native_4k, native_5k=native_5k if args.native_5k is not None else (False if args.native_4k is False else None))
-        run([LSREGISTER, '-f', out], logs / 'register-app.log')
-        say('4/4 app: macOS checks the app once (seconds when this app folder was checked before, a few minutes for a new one)')
-        t1 = time.time()
-        r = subprocess.run([out / f'Contents/MacOS/{APPS["botw"][2]}', '--check'], capture_output=True, text=True, timeout=1800)
-        if r.returncode: raise BuildError(f'the app does not start: {(r.stdout + r.stderr).strip()}')
-        say(f'   checked in {time.time() - t1:.0f} s')
-        step_warm_metal(tree, out, logs)
-        if mod and (mod / 'romfs').is_dir():
-            say(f'4/4 app: {mod.name}/romfs was not installed (a build leaves the player\'s mod folder alone): copy it into '
-                f'~/Library/Application Support/MacNativeGames/BotW/mods/{version} and write its manifest.tsv (docs/mods.md)')
-        say(f'done in {(time.time() - t0) / 60:.0f} min: {out}')
-        say('Open it from Finder. The first start verifies the game data and any installed add-on content and keeps a record; '
-            'saves, the shader cache and the log go to ~/Library/Application Support/MacNativeGames/BotW and ~/Library/Logs/MacNativeGames/botw.log.')
-        return
-    work_volume=existing_volume_path(work.parent if work.parent.exists() else game.parent)
-    output_volume=existing_volume_path(out.parent if out.parent.exists() else game.parent)
-    free=shutil.disk_usage(work_volume).free/2**30
-    output_free=shutil.disk_usage(output_volume).free/2**30
-    same_volume=os.stat(work_volume).st_dev==os.stat(output_volume).st_dev
-    base_cached=(work/'totk/extracted/v0/romfs/romfs.bin').exists()
-    say(f'work folder {work} ({why}; {free:.0f} GB free on its volume)')
-    if device_app:
-        if same_volume:
-            required=(60 if update else 45) if not base_cached else (40 if update else 18)
-        else:
-            required=(40 if update else 25) if not base_cached else (25 if update else 18)
-        if args.ios_game_data=='documents' and base_cached:
-            required=10   # the IPA carries no 17 GB image
-        if free<required:
-            raise BuildError(f'iOS build needs about {required} GB free on the work/output volume for the IPA archive')
-        if not same_volume and output_free<18:
-            raise BuildError('the output volume needs about 18 GB free for the iOS IPA')
-    else:
-        if update and free<40 and not base_cached:
-            raise BuildError('needs about 40 GB free for a fresh base + update build (19 GB extra with base data cached)')
-        if free<25 and not base_cached:
-            raise BuildError('needs about 25 GB free for the work folder (the app itself is an APFS clone of it when on the same volume)')
-    if mod and args.install_mod_romfs:      # said before the long steps, so a mistake can still be stopped with Ctrl-C
-        say(f'--install-mod-romfs: the player\'s mod folder for the version this build makes will be REPLACED by '
-            f'{mod.name}/romfs (and its manifest.tsv) when the build ends; what it holds now is moved next to it as '
-            f'<folder>.backup-<date>-<time>, not deleted. Without the flag the build leaves the folder alone.')
-    if update:
-        version, update = identify_update(tree, update, keys, logs)
-    if args.native_4k and (args.platform != 'macos' or version not in ('v143', 'v121')):
-        raise BuildError('--native-4k needs 1.2.1 or the 1.4.3 update and a Mac build (the other versions and iPhone / iPad have no 4K output)')
-    if args.native_5k and (args.platform != 'macos' or version != 'v143'):
-        raise BuildError('--native-5k needs the 1.4.3 update and a Mac build')
-    if args.vr and (args.platform != 'macos' or version != 'v143' or args.native_4k is False):
-        raise BuildError('--vr needs the 1.4.3 update, a Mac build and native 4K')
-    if args.native_5k and args.native_4k is False:
-        raise BuildError('--native-5k includes native 4K; omit --no-native-4k')
-    native_5k = native_5k_enabled(args.platform, version, args.native_5k, args.native_4k)
-    native_4k = True if native_5k else args.native_4k
-    if native_4k is None:
-        native_4k = args.platform == 'macos' and version in ('v143', 'v121') and native_4k_default()
-    if version in ('v143', 'v121') and args.platform == 'macos':
-        say('native 4K: ' + ('on' if native_4k else 'off') + ('' if args.native_4k is not None else
-            ' (this Mac has ' + ('16 GB or more' if native_4k else 'less than 16 GB') + ' of memory; --native-4k / --no-native-4k decide)'))
-    if args.platform == 'macos' and version == 'v143':
-        say('native 5K: ' + ('on (5120x2880 canvas and scene)' if native_5k else 'off') +
-            (' (automatic with 32 GB or more; --native-5k / --no-native-5k decide)' if args.native_5k is None and args.native_4k is not False else '') +
-            ('' if not native_5k or native_5k_roomy() else
-            '. Note: this Mac has less than 32 GB of memory; a native 5K app reserves about 2.7 GiB more than a 4K one at'
-            ' every start, whatever is shown'))
-    step_code(tree, game, keys, env, logs, mod=None if update else code_mod)
-    if update:
-        step_code(tree, update, keys, env, logs, version=version,
-                  mod=code_mod)   # a mod is for the updated main, not for 1.0.0
-    step_data(tree, game, keys, logs, firmware=firmware, shared_fonts=shared_fonts, mod=None if update else mod,
-              update=bool(update), app=out if out.suffix == '.app' else None)
-    if update:
-        step_update_data(tree, game, update, keys, logs, version=version, mod=mod, native_4k=native_4k, native_5k=native_5k, vr=args.vr,
-                         app=out if out.suffix == '.app' else None)
-    if mod:
-        check_mod_overlays(tree, mod, version)
-    step_shaders(tree, logs, version=version)
-    if not device_app:   # the Mac app's metallibs; build_ipa.py compiles the device's own
-        step_shader_libs(tree, logs, version=version)
-    step_binary(tree, game, keys, env, logs, version=version)
-    say(f'4/4 app: assembling {out}')
-    remove_device_reminder()
-    if device_app:
-        if args.platform == 'ios':   # visionOS keeps the startup shaders only
-            build_device_translator(tree, logs)
-        run([py, 'ios/tools/build_ipa.py', '--tree', tree, '--out', out, '--version', version,
-             '--logs', logs, '--app-name', IOS_APP_NAME, '--bundle-id', BUNDLE_ID, '--platform', args.platform,
-             *(['--image-outside'] if args.ios_game_data == 'documents' else []),
-             *[x for g in args.device_gpu or [] for x in ('--device-gpu', g)]], logs/'build-ipa.log', cwd=tree, env=env)
-        say_device_pipelines(logs)
-    else:
-        step_app(tree, out, logs, version=version, game_data=args.mac_game_data, game_data_folder=game_data_folder,
-                 native_5k=False if args.native_4k is False else args.native_5k)
-    # Refresh an existing app's version, executable and signing identity before
-    # the next Finder launch; the desktop alias keeps pointing to this bundle.
-    if args.platform=='macos': run([LSREGISTER, '-f', out], logs / 'register-app.log')
-    # macOS scans a new app the first time it runs (minutes for 16 GB, with nothing on screen): run it once here, in its
-    # check-only mode, so the player's first start is immediate.
-    if args.platform=='macos':
-        say('4/4 app: macOS checks the app once (seconds when this app folder was checked before, a few minutes for a new one)')
-        t1 = time.time()
-        r = subprocess.run([out / 'Contents/MacOS/TOTK', '--check'], capture_output=True, text=True, timeout=1800)
-        if r.returncode: raise BuildError(f'the app does not start: {(r.stdout + r.stderr).strip()}')
-        say(f'   checked in {time.time() - t1:.0f} s')
-        step_warm_metal(tree, out, logs)
-        if mod and args.install_mod_romfs:
-            install_mod_romfs(mod, tree, version, out, py, logs)   # --install-mod-romfs: <data>/mods/<version> + its manifest
-        elif mod:
-            say_mod_copy_steps(mod, tree, version, out)            # the folder is the player's: only say how to fill it
-    elif mod:
-        say('4/4 app: an iPhone / iPad / Vision Pro build loads no player mod folder, so --mod merged its code patches only')
-    say(f'done in {(time.time() - t0) / 60:.0f} min: {out}')
-    if args.platform=='macos':
-        say('Open it from Finder. Moving it afterwards (also to /Applications) keeps the macOS check when it stays on the same '
-            'volume, but Metal then compiles the startup shaders again in the background on the next start (a few minutes): '
-            'pass -o with the final location instead. The first start verifies the game data and loads the prepared startup '
-            'shaders. Additional scene/binding variants are translated and cached as they appear.')
-    else: say('Sign and install the unsigned app with games/totk/ios/tools/install_device.py. Requires iOS/iPadOS 26 or visionOS 26 and a supported game controller; verify gameplay on your device.')
+    source = args.game.expanduser().resolve()
+    if source.suffix.lower() == '.nup':
+        check_nup(source)
+    elif not source.is_dir() or ns2_source_title(source) != nup_title.OOT_TITLE:
+        raise BuildError(f'{source}: choose an Ocarina of Time .nup or Switch 2 dump folder')
+    return build_oot(args, source)
 
 
 if __name__ == '__main__':

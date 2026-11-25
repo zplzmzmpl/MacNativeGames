@@ -36,7 +36,7 @@ xcode-select --install
 
 ## 打包
 
-**1. 本仓库**：`git clone https://github.com/ly05010419/MacNativeGames.git`（或下载 ZIP），在 `MacNativeGames` 目录打开终端。已经有的话先 `git pull`。
+**1. 本仓库**：`git clone https://github.com/zplzmzmpl/MacNativeGames.git`（或下载 ZIP），在 `MacNativeGames` 目录打开终端。已经有的话先 `git pull`。
 
 **2. 打包。** 每个路径都加引号。现在就用 `-o` 定好 App 的最终位置；不给 `-o` 时 App 写在导出文件旁边。
 
@@ -77,14 +77,9 @@ python3.14 build_app.py "<导出目录>" --shared-fonts "<…/TOTK_build/totk/ex
 
 ## 更新 App
 
-- **仓库有新版本**（`git pull` 之后）：先退出游戏，再运行
+先退出游戏。工作目录在外接盘时，先挂载该盘，再在 **MNG Launcher** 的《时之笛》卡片点 **极速更新**。Launcher 会复用已有构建数据，并提示是否需要重新导入游戏文件。存档和设置会保留。
 
-  ```sh
-  python3.14 update_runtime.py "<App>" --work "<工作目录>"
-  ```
-
-  它重新编译运行时、重建管线存档，复用已有的着色器，几分钟就好；工作目录默认是 App 旁边的 `OcarinaOfTime_build`。如果它说着色器需要完整打包，就再运行一次[打包](#打包)里的 `build_app.py` 命令，工作目录里其他东西都会复用。
-- 两种方式都不会改动你的存档和设置。
+Launcher 使用随附的源码。要应用本仓库的新提交，先安装包含它们的 Launcher。 [Launcher 更新说明](../../../maintenance.zh-CN.md)
 
 ## 打包停下时
 

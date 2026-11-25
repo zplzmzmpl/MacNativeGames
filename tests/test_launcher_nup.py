@@ -52,11 +52,11 @@ class NupGame(unittest.TestCase):
                 build_app.main([str(path)])
         oot.assert_not_called()
 
-    def test_a_game_built_from_its_folder_says_so(self):
+    def test_another_supported_upstream_game_is_rejected_by_this_fork(self):
         path = make_nup(self.dir / 'p.nup', (POKOPIA + 0x800, fmt.KIND_UPDATE, 655360))
         plan = self.plan(path)
         self.assertIsNone(plan.base)
-        self.assertIn('dump folder', plan.blocks[0])
+        self.assertIn(f'{POKOPIA:016X}', plan.blocks[0])
         with mock.patch.object(build_app, 'build_oot') as oot:
             with self.assertRaises(build_app.BuildError):
                 build_app.main([str(path)])

@@ -7,6 +7,7 @@ the work folder's logs/) and the progress once a second, and ends with exactly o
 prints is also kept in ~/Library/Logs/MacNativeGames/builder-app-<game>-<date>-<time>.log."""
 import json
 import os
+import plistlib
 from pathlib import Path
 import re
 import signal
@@ -39,29 +40,6 @@ def express_plan(app, python=sys.executable, work=None, quick=False):
     return plan(app, python, work) if work else plan(app, python)
 
 
-def same_version(plan, update_plan):
-    """Whether the dropped files are of the installed app's game version, so an update of the app is the same build. Only
-    when it is known: a card image without [vNNN] in its name, or files of another version, take the full build."""
-    if update_plan.get('game') != plan.get('game'):
-        return False
-    if plan['game'] == 'oot':   # one version is built (131072), checked by the build itself
-        return True
-    if plan['game'] == 'tmnt':
-        return update_plan.get('version') == 'v0' and not plan.get('update')
-    if plan['game'] == 'dread':
-        expected = 327680 if update_plan.get('version') == 'v210' else 0 if update_plan.get('version') == 'v100' else None
-        return expected is not None and (plan.get('update_version') if plan.get('update') else 0) == expected
-    if plan['game'] == 'odyssey':   # 1.3.0 and 1.4.1 build the same app (the same code and merged data)
-        return True
-    if plan['game'] == 'eow':   # one version is built (1.1.0)
-        return plan.get('update_version') == 196608
-    if plan['game'] == 'acnh':   # update_runtime.plan: 'v<update version>' of the app
-        return plan.get('update') is not None and update_plan.get('version') == f'v{plan.get("update_version")}'
-    app_version = repo.build_app().VERSIONS.get(update_plan.get('version') or '', {}).get('version')
-    dropped = plan.get('update_version') if plan.get('update') else 0
-    return dropped is not None and app_version is not None and str(app_version) == str(dropped)
-
-
 def command(request, python=sys.executable):
     """(script, arguments, work folder, app path, kind, game) for a request, kind being express, fast or full (the three updates
     of docs/install.md, the fastest that fits; user 2026-11-12: "不要用最慢的形式打包"):
@@ -75,6 +53,15 @@ def command(request, python=sys.executable):
     The work folder is the one the app records, else work_root/<game>, else build_app.default_work (the one rule of
     build_app.py, update_runtime.py and the Launcher)."""
     b = repo.build_app()
+    if request.get('update'):
+        from tools.builder_jobs.installed import OOT_BUNDLE
+        app = Path(request['update']).expanduser()
+        try:
+            info = plistlib.loads((app / 'Contents/Info.plist').read_bytes())
+        except (OSError, ValueError):
+            info = {}
+        if info.get('CFBundleIdentifier') != OOT_BUNDLE:
+            raise Refused(t('this fork updates only Ocarina of Time', '本仓库只更新时之笛'))
     if request.get('update') and request.get('shaders'):   # only the shaders and pipelines (shader_update.py)
         app = Path(request['update']).expanduser()
         up = express_plan(app, python)
@@ -95,7 +82,7 @@ def command(request, python=sys.executable):
     plan = request['plan']
     if plan.get('blocks'):
         raise Refused(plan['blocks'][0])
-    if not plan.get('game') or not plan.get('base'):
+    if plan.get('game') not in repo.GAMES or not plan.get('base'):
         raise Refused(t('no game to build', '没有要打包的游戏'))
     platform = request.get('platform', 'macos')
     if platform != 'macos':
@@ -106,23 +93,18 @@ def command(request, python=sys.executable):
     work = b.default_work(out, plan['game'])[0] if out.is_dir() or not work_root else Path(work_root).expanduser() / plan['game']
     if out.is_dir():
         up = express_plan(out, python, quick=bool(request.get('quick')))
-        if up['kind'] in ('express', 'fast') and same_version(plan, up):
+        if up['kind'] in ('express', 'fast') and up.get('game') == plan['game']:
             return (repo.UPDATE_RUNTIME, [str(out)] + (['--seed'] if up['kind'] == 'fast' else []), Path(up['work']), out,
                     up['kind'], plan['game'])
     argv = [plan['base']]
-    if plan.get('keys') and plan['game'] in ('totk', 'botw', 'dread', 'tmnt', 'acnh', 'eow', 'odyssey'):
-        argv += ['-k', plan['keys']]
     if plan.get('update'):
         argv += ['--update', plan['update']]
     for dlc in plan.get('dlc') or []:
         argv += ['--dlc', dlc]
-    if plan.get('firmware') and plan['game'] != 'tmnt':
-        argv += ['--firmware', plan['firmware']]
-    elif plan.get('fonts') and plan['game'] != 'tmnt':
+    if plan.get('fonts'):
         argv += ['--shared-fonts', plan['fonts']]
     argv += ['--work', str(work), '-o', str(out)]
-    script = repo.REPO/f'games/{plan["game"]}/build.py' if plan['game'] in ('dread', 'tmnt', 'acnh', 'eow', 'odyssey') else repo.BUILD_APP
-    return script, argv, work, out, 'full', plan['game']
+    return repo.BUILD_APP, argv, work, out, 'full', plan['game']
 
 
 class Steps:

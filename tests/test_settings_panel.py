@@ -63,7 +63,7 @@ class OnePanel(unittest.TestCase):
     SHARED = ROOT / 'shared/runtime/settings_panel.h'
 
     def test_each_game_links_the_shared_panel(self):
-        for game in ('totk', 'oot', 'odyssey'):
+        for game in ('totk', 'oot'):
             with self.subTest(game=game):
                 link = ROOT / f'games/{game}/runtime/settings_panel.h'
                 self.assertTrue(link.is_symlink())
@@ -78,17 +78,6 @@ class OnePanel(unittest.TestCase):
                      'GAME_ODYSSEY', 'settings_oot_', 'odyssey_graphics'):
             self.assertNotIn(word, panel)
         self.assertEqual(panel.count('#include "settings_game.h"'), 2)   # SETTINGS_GAME_PART 1 and 2
-
-    def test_odyssey_has_the_zelda_pages_but_vr(self):
-        """User, Effects, 排行榜 and 截图分享 too (2026-11-17, their modules shared in shared/runtime); VR and the 1.4.3
-        anti-aliasing quality rows stay the Zelda games' own."""
-        game = (ROOT / 'games/odyssey/runtime/settings_game.h').read_text()
-        self.assertEqual(sorted(re.findall(r'#define (SETTINGS_HAS_\w+) 1', game)),
-                         ['SETTINGS_HAS_BOARD', 'SETTINGS_HAS_EFFECTS', 'SETTINGS_HAS_SHOTS', 'SETTINGS_HAS_USERS'])
-        self.assertIn('static void settings_effects_reset(void)', game)   # the panel's Reset to defaults calls the game's own
-        self.assertNotIn('KEYMAP_SCREENSHOT = -2', game)   # its screenshot is real now (keyboard_map.h, gamepad.m)
-        self.assertIn('static NSArray<TOTKSettingRow *> *settings_rows(void)', game)
-        self.assertIn('static const SettingsAction *settings_actions(int *count)', game)
 
 
 @unittest.skipUnless(sys.platform == 'darwin', 'AppKit requires macOS')

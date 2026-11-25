@@ -34,7 +34,6 @@ Code in this repository that comes from other projects keeps its license; the li
 | Source-specific Metal bracket depth in `build_app.py` and `games/totk/scripts/build_shader_libs.py`; synthetic nested-walk test in `tests/test_metal_bracket_depth.py` | [nxnative commit `56b73f21`](https://github.com/stan69b/nxnative/commit/56b73f21) (seedds, `oot-clean`), adapted | MIT | `games/totk/third_party/licenses/nxnative.txt` |
 | audio effects in `games/totk/runtime/audio_reverb.c`, `games/totk/runtime/audio_effects.c` (delay, reverb, compressor) and the mixer | ported from Ryujinx.Audio | MIT | `games/totk/third_party/licenses/Ryujinx-Audio.txt` |
 | `zeldaVR/streamer/basaltvr.patch` (our changes to the streamer, with lines of its source as diff context) | [BasaltVR](https://github.com/frenchbaguetteman/BasaltVR) at `4c46172` | MIT | `zeldaVR/streamer/LICENSE.BasaltVR` |
-| `windows_games/ra2/third_party/x86recomp` (x86 to arm64 recompiler and Win32 runtime) | [x86recomp](https://github.com/JTM-rootstorm/x86recomp) at `1c90fe3`, with WinNativeGames' changes (`UPSTREAM.md` lists them) | MIT | `windows_games/ra2/third_party/x86recomp/LICENSE` |
 | Scene HDR math and grading in `games/totk/third_party/d2r_gfx/gfx/nvn/totk_hdr_compose.h` | [RenoDX TOTK](https://github.com/Souperman9/renodx/tree/40d764d88719ab06c8e46139b5454e7dafc8cbcc/src/games/totk) | MIT | `games/totk/third_party/d2r_gfx/gfx/nvn/LICENSE.renodx` |
 
 Fetched or linked at build time (not in this repository):
@@ -52,17 +51,3 @@ Fetched or linked at build time (not in this repository):
 | [SPIRV-Cross](https://github.com/KhronosGroup/SPIRV-Cross) `vulkan-sdk-1.4.363.0` (`f11ba9f`) and [glslang](https://github.com/KhronosGroup/glslang) 16.6.0 (`e1b562a`), built from source by `tools/deps` | the `spirv-cross` and `glslangValidator` programs of the nxnative builds; TMNT also ships the SPIRV-Cross CLI with its license | Apache-2.0; glslang: BSD-3-Clause and others (its LICENSE.txt) |
 | [Noto Sans](https://github.com/google/fonts) JP, SC, TC, KR and Symbols 2 from google/fonts at `6c1dbe2` (SHA-256 pinned), pinned at Regular by [fontTools](https://github.com/fonttools/fonttools) 4.60.1 (PyPI wheel, SHA-256 pinned), by `tools/deps/open_fonts.py` | the six system shared fonts of a Switch 2 game's app (Ocarina of Time, Bananza, Pokopia) built without firmware fonts; the app carries them with their `OFL.txt` | SIL OFL 1.1; fontTools: MIT, not shipped |
 | [.NET SDK](https://dotnet.microsoft.com) 10.0.401, Microsoft's osx-arm64 tarball (SHA-512 pinned), downloaded by `tools/deps` | runs and builds the nxnative shader translator tools; not shipped | MIT |
-| [Berkeley SoftFloat 3](https://github.com/ucb-bar/berkeley-softfloat-3) at `5c06db3`, fetched by `windows_games/ra2/third_party/x86recomp/cmake/softfloat.cmake` | exact x87 arithmetic in windows_games | BSD-3-Clause |
-| [CORE-MATH](https://gitlab.inria.fr/core-math/core-math) at `74fcd10`, fetched by `windows_games/ra2/third_party/x86recomp/cmake/coremath.cmake` | correctly rounded math functions in windows_games | MIT |
-| SDL3 3.4.14, glslang, SPIRV-Cross, ffmpeg 8.1 (decoders only), built by `windows_games/ra2/scripts/ios/build_deps.sh` | windows_games on iOS | zlib, BSD-3-Clause / Apache-2.0, Apache-2.0, LGPL-2.1 |
-| [BasaltVR](https://github.com/frenchbaguetteman/BasaltVR) at `4c46172`, fetched and built by `zeldaVR/install_vr.sh` with `zeldaVR/streamer/basaltvr.patch` | the VR streamer (Mac to Meta Quest 3) | MIT |
-| [ALVR](https://github.com/alvr-org/ALVR) client v20.14.0, downloaded (SHA-256 checked) and installed on the headset by `zeldaVR/install_vr.sh` | shows the VR picture on the Meta Quest 3 | MIT |
-| [Noto Sans CJK SC](https://github.com/notofonts/noto-cjk) (Source Han Sans) DemiLight at `165c01b`, downloaded and checked by `windows_games/ra2/scripts/languages.py` | the Simplified Chinese glyphs it draws into the player's game font | SIL OFL 1.1 |
-| [OpenCC](https://github.com/BYVoid/OpenCC), run (not included) by `windows_games/ra2/scripts/languages.py` | Traditional to Simplified Chinese | Apache-2.0 |
-
-## Optional UI reconstruction tools
-
-`tools/ui_pack` uses NumPy (BSD-3-Clause), SciPy (BSD-3-Clause), ContourPy (BSD-3-Clause) and Pillow (MIT-CMU).
-Their CPython wheels are downloaded from PyPI, verified against `tools/deps/pins.py`, and installed only in the external
-dependency cache; each wheel retains its own license files. [ContourPy license](https://github.com/contourpy/contourpy/blob/main/LICENSE).
-The grid-edge tracer in `tools/ui_pack/outline.py` is original MIT code. No Potrace code is included or required.

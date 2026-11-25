@@ -98,8 +98,8 @@ class StateReportProbe(unittest.TestCase):
 class StateReportSources(unittest.TestCase):
     def test_no_link_to_the_framework(self):
         # Opened at run time: the build works with any SDK and the binary starts on macOS 26.
-        for path in [TOTK/'Makefile', ROOT/'build_app.py', ROOT/'update_runtime.py', TOTK/'ios/project.yml',
-                     *TOTK.glob('ios/tools/*.py'), *TOTK.glob('scripts/*.py')]:
+        for path in [TOTK/'Makefile', ROOT/'build_app.py', ROOT/'update_runtime.py', ROOT/'games/oot/ios/project.yml',
+                     *ROOT.glob('games/oot/ios/tools/*.py'), *TOTK.glob('scripts/*.py')]:
             self.assertNotRegex(path.read_text(errors='replace'), r'StateReporting', str(path))
         users = [p.name for p in [*NVN.glob('*.[chm]'), *(TOTK/'runtime').glob('*.[chm]')]
                  if 'SRStateReporter' in p.read_text(errors='replace') or '<StateReporting' in p.read_text(errors='replace')]

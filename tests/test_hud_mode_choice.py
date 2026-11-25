@@ -1,7 +1,4 @@
-"""The overlay's five choices on the iPhone / iPad as on the Mac (user 2026-11-20: "进阶 可以选 fps格式 比如 关闭"): the
-Settings pane and the shared Advanced screen (games/totk/ios, which every iOS port builds) offer the Mac panel's
-"性能信息" row, in its order, stored as TOTK_HUD_MODE, which the shared fps_overlay.c starts on."""
-import plistlib
+"""The Mac settings and shared FPS overlay agree on HUD modes."""
 import re
 import shutil
 import subprocess
@@ -21,22 +18,8 @@ def enum():
 
 class Choices(unittest.TestCase):
     def test_mac_panel_order(self):
-        mac = (ROOT / 'games/totk/runtime/settings_game.h').read_text()
+        mac = (ROOT / 'games/oot/runtime/settings_game.h').read_text()
         self.assertIn('@[' + ','.join(f'@({m})' for m in ORDER) + ']', mac)
-
-    def test_settings_pane_row(self):
-        row = next(x for x in plistlib.loads((ROOT / 'games/totk/ios/Settings.bundle/Root.plist').read_bytes())['PreferenceSpecifiers']
-                   if x.get('Key') == 'TOTK_HUD_MODE')
-        values = enum()
-        self.assertEqual(row['Values'], [str(values[m]) for m in ORDER])
-        self.assertEqual(row['DefaultValue'], str(values['HUD_MODE_ALL']), 'the runtime\'s own default')
-        self.assertNotIn('TOTKApp', row, 'every game\'s pane')
-
-    def test_advanced_row(self):
-        view = (ROOT / 'games/totk/ios/Sources/advanced_view.m').read_text()
-        self.assertIn('static const int HUD_MODES[] = {' + ', '.join(ORDER) + '};', view)
-        self.assertIn('fps_overlay_set_hud_mode(mode);', view)
-        self.assertIn('forKey:@"TOTK_HUD_MODE"', view)
 
 
 class StartsOnTheChoice(unittest.TestCase):

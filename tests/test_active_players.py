@@ -22,23 +22,10 @@ HEADER = ROOT / 'games/totk/runtime/mng_active.h'
 STARTS = {
     'games/totk/runtime/frontend.m': 'mng_active_start(@GAME_INBOX_ID, mng_active_version());',
     'games/oot/runtime/frontend.m': 'mng_active_start(@"oot", mng_active_version());',
-    'games/totk/ios/Sources/main.m': 'mng_active_start(@GAME_INBOX_ID, mng_active_version());',
     'games/oot/ios/Sources/main.m': 'mng_active_start(@"oot", mng_active_version());',
-    # the other games: their id is the folder name (the same as GAME_INBOX_ID where the game has one)
-    **{f'games/{g}/runtime/frontend.m': f'mng_active_start(@"{g}", mng_active_version());' for g in (
-        'acnh', 'alc', 'aocx', 'by3', 'dread', 'eow', 'kirby', 'lm3', 'mj2013', 'mk8dx', 'mkw', 'mvdk', 'odyssey', 'ori', 'ot0', 'p5r', 'pla', 'pokesv',
-        'rdr', 'ssbu', 'tmnt', 'tomodachi', 'unicorn', 'w3', 'wonder', 'xc3', 'xcx')},
-    # the games on the host runtime: front_mac.m is built in runtime/host, so their copy of the header is there
-    **{f'games/{g}/runtime/host/front_mac.m': f'mng_active_start(@"{g}", mng_active_version());' for g in (
-        'aoc', 'jamboree', 'la', 'mk8d', 'ss', 'worldend')},
-    'games/dread/ios/Sources/main.m': 'mng_active_start(@"dread", mng_active_version());',
-    'games/tmnt/ios/Sources/main.m': 'mng_active_start(@"tmnt", mng_active_version());',
 }
-PANES = ['games/totk/ios/Settings.bundle/Root.plist', 'games/oot/ios/Settings.bundle/Root.plist',
-         'games/dread/ios/Settings.bundle/Root.plist', 'games/tmnt/ios/Settings.bundle/Root.plist']   # every iOS app that reports
-# each pane is in its app: listed in the iOS project's sources (dread's project.yml is written by build_ipa.py)
-PANE_PROJECTS = {'games/totk/ios/project.yml': '- Settings.bundle', 'games/oot/ios/project.yml': '- Settings.bundle',
-                 'games/tmnt/ios/project.yml': '- Settings.bundle', 'games/dread/ios/tools/build_ipa.py': "- path: {GAME/'ios/Settings.bundle'}"}
+PANES = ['games/oot/ios/Settings.bundle/Root.plist']
+PANE_PROJECTS = {'games/oot/ios/project.yml': '- Settings.bundle'}
 
 
 class Header(unittest.TestCase):

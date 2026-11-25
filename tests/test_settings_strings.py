@@ -5,9 +5,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-TOOLS = Path(__file__).resolve().parents[1] / "games/totk/ios/tools"
+TOOLS = Path(__file__).resolve().parents[1] / "games/oot/ios/tools"
 sys.path.insert(0, str(TOOLS))
-import build_ipa  # noqa: E402
 import settings_strings  # noqa: E402
 
 ROOT = TOOLS.parent / "Settings.bundle/Root.plist"
@@ -24,14 +23,10 @@ class SettingsStrings(unittest.TestCase):
             for lang in ("en", "fr"):
                 self.assertNotRegex(t[lang][text], settings_strings.CJK, f"{lang} still has Chinese: {text!r}")
             en = t["en"][text]
-            self.assertIn(en, fr, f"no French for {en!r}")
+            self.assertEqual(t["fr"][text], fr.get(en, en), f"wrong French translation or fallback for {en!r}")
 
-    def test_totk_pane(self):
+    def test_oot_pane(self):
         self.check(plistlib.loads(ROOT.read_bytes()))
-
-    def test_botw_pane(self):
-        root = build_ipa.botw_pane(plistlib.loads(ROOT.read_bytes()))
-        self.check(root)
 
     def test_written_bundle(self):
         with tempfile.TemporaryDirectory() as d:

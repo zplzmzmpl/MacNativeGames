@@ -266,19 +266,14 @@ class SeedContext(unittest.TestCase):
             translation_context_sha256=seed.legacy_translation_context(program, 'minus-w'))))
 
 
-# Every game's packaging script that names the translator in a cache or seed identity (user 2026-11-18: "做" the
-# community games and Bananza / Pokopia too), and the function in it that hashes the translator's code.
+# Packaging scripts that name the translator in a cache or seed identity.
 CODE_HASHES = {
-    'games/oot/scripts/prepare_ns2_seed.py': 'code_sha256', 'games/totk/scripts/prepare_ns2_seed.py': 'code_sha256',
-    'games/totk/scripts/prepare_shader_seed.py': 'code_digest', 'games/oot/scripts/prepare_shader_seed.py': 'code_digest',
-    'games/kirby/third_party/totk-scripts/prepare_shader_seed.py': 'code_digest',
-    'games/odyssey/third_party/totk-scripts/prepare_shader_seed.py': 'code_digest',
-    'games/pla/scripts/prepare_shader_seed.py': 'code_digest', 'games/ssbu/scripts/prepare_shader_seed.py': 'code_digest',
-    'games/dread/scripts/prepare_shader_seed.py': 'code_digest', 'games/acnh/tools/prepare_shader_seed.py': 'code_digest',
-    'games/eow/scripts/prepare_shader_seed.py': 'code_digest', 'games/kirby/scripts/prepare_shader_seed.py': 'code_digest',
-    'games/tmnt/scripts/tmnt_shaders.py': 'code_digest', 'games/xc3/scripts/translate_shaders.py': 'code_digest',
+    'games/oot/scripts/prepare_ns2_seed.py': 'code_sha256',
+    'games/totk/scripts/prepare_ns2_seed.py': 'code_sha256',
+    'games/totk/scripts/prepare_shader_seed.py': 'code_digest',
+    'games/oot/scripts/prepare_shader_seed.py': 'code_digest',
 }
-# how a translator was named by its whole file in a cache or seed identity before 2026-11-18
+# Whole-file identities would invalidate the shader cache after signing.
 WHOLE_FILE = re.compile(r"translator_sha256=(?:digest|sha256|file_digest)\((?:translator|work /)|'translator': digests\.sha256\("
                         r"|\btranslator=digest\(translator\)|translator_sha256=identity\['translator_sha256'\]")
 

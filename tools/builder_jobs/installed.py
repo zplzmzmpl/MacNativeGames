@@ -19,14 +19,11 @@ from tools.builder_jobs import repo
 
 LSREGISTER = ('/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister')
 OOT_BUNDLE = 'org.macnativegames.oot'   # games/oot/build.py
-ACNH_BUNDLE = 'org.macnativegames.acnh'   # games/acnh/build.py
-EOW_BUNDLE = 'org.macnativegames.eow'     # games/eow/build.py
-ODYSSEY_BUNDLE = 'org.macnativegames.odyssey'   # games/odyssey/build.py
 
 
 def bundle_ids():
-    """The Mac bundle IDs of the games the Launcher builds (build_app.APPS, and Ocarina of Time's; not repo.NOT_IN_LAUNCHER's)."""
-    return {bundle for _, bundle, _ in repo.build_app().APPS.values()} | {OOT_BUNDLE, 'org.macnativegames.dread', 'org.macnativegames.tmnt.private', ACNH_BUNDLE, EOW_BUNDLE, ODYSSEY_BUNDLE}
+    """The Mac bundle ID this fork supports."""
+    return {OOT_BUNDLE}
 
 
 # LaunchServices asked by bundle ID (NSWorkspace URLsForApplicationsWithBundleIdentifier, macOS 12+) through osascript's

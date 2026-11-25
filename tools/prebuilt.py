@@ -25,10 +25,6 @@ import tempfile
 
 FOLDER = '.prebuilt'
 SCHEMA = 1
-# Tears of the Kingdom 1.0.0 / 1.2.1 / 1.4.3, Breath of the Wild 1.6.0 / 1.9.0, Bananza, Pokopia (games/totk/Makefile)
-TOTK_VERSIONS = ('v0', 'v121', 'v143', 'botw160', 'botw190', 'dkb', 'pkp')
-
-
 def runtime_name(version):
     """The program games/totk/Makefile makes for a version (build/<name>), and its name in the folder."""
     return 'totk-native' if version == 'v0' else f'totk-native-{version}'
@@ -38,14 +34,14 @@ def runtime_name(version):
 # the game; user 2026-11-22: "时之笛的运行时改成发布时编好"). Its build still compiles the game's shader libraries with
 # Xcode's Metal compiler (classify.oot_needs_metal): those are made from the player's game files.
 OOT_PROGRAMS = {'oot-native': 'oot-native', 'oot-pool-sources-list': 'pool-sources-list'}   # name here: name in build/
-NAMES = (*(runtime_name(v) for v in TOTK_VERSIONS), 'spirv-cross', 'warm-metal-cache', 'hactool', *OOT_PROGRAMS)
+NAMES = tuple(OOT_PROGRAMS)
 
 # The runtimes map the game's code into executable memory at start (games/totk/runtime/loader.c seal: mprotect to
 # PROT_EXEC). A process signed with the hardened runtime that does this without the entitlements that permit it is killed
 # by macOS (SIGKILL, exit 137), so a runtime signed hardened but without them fails every build's runtime probe: the
 # update dies with "the new runtime does not load the app's game files". These are the runtimes (not spirv-cross, the
 # warm-up tool, hactool or the pool-sources list, which map no guest code) and the entitlements they need.
-RUNTIME_NAMES = (*[runtime_name(v) for v in TOTK_VERSIONS], 'oot-native')
+RUNTIME_NAMES = ('oot-native',)
 RUNTIME_ENTITLEMENTS = '''<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
@@ -191,12 +187,8 @@ def build(source):
     out.mkdir()
     logs = Path(tempfile.mkdtemp(prefix='mng-prebuilt-logs-'))
     jobs = str(os.cpu_count() or 4)
-    totk = source / 'games/totk'
-    build_app.codec_libraries('macos')   # opus, libvpx, dav1d the runtimes link (tools/deps)
+    build_app.codec_libraries('macos')
     env = dict(os.environ)
-    # checked in, made from the runtime sources: a fresh checkout's file times must not ask make to make it again (that
-    # needs the build's Python environment)
-    (totk / 'runtime/botw_pchtxt_sites.h').touch()
     with tempfile.TemporaryDirectory(prefix='mng-runtime-ent-') as entdir:
         ent = Path(entdir) / 'runtime.entitlements'
         ent.write_text(RUNTIME_ENTITLEMENTS)
@@ -205,16 +197,6 @@ def build(source):
             build_app.run(['codesign', '--force', '--sign', '-', '--options', 'runtime',   # nested: not the app (a runtime program; the app it goes into is signed by build_app.sign_app)
                            '--entitlements', str(ent), str(out / name)], logs / f'{name}-sign.log', env=env)
 
-        for version in TOTK_VERSIONS:
-            name = runtime_name(version)
-            build_app.run(['make', '-C', totk, f'-j{jobs}', f'build/{name}'], logs / f'{name}.log', env=env)
-            shutil.copy2(totk / 'build' / name, out / name)
-            sign_runtime(name)
-        build_app.build_spirv_cross(totk, logs)   # fetches the pinned sources into totk/tooling (git)
-        shutil.copy2(totk / 'build/spirv-cross/spirv-cross', out / 'spirv-cross')
-        build_app.build_warm_tool(totk, logs, env)
-        shutil.copy2(totk / 'build/warm-metal-cache', out / 'warm-metal-cache')
-        shutil.copy2(build_app.build_hactool(totk, logs), out / 'hactool')
         oot_work = Path(tempfile.mkdtemp(prefix='mng-prebuilt-oot-'))   # make's WORK: outside the source, with no space
         build_app.run(['make', '-C', source / 'games/oot', f'-j{jobs}', f'WORK={oot_work}', 'runtime'], logs / 'oot.log', env=env)
         for name, made in OOT_PROGRAMS.items():

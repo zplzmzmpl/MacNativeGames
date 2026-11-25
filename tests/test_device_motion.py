@@ -23,7 +23,7 @@ def run_probe(test, command):
 @unittest.skipUnless(sys.platform == 'darwin' and shutil.which('xcrun'), 'needs macOS and the Xcode command line tools')
 class DeviceMotionTests(unittest.TestCase):
     def test_axes(self):
-        run_probe(self, ['xcrun', 'clang', '-std=c11', '-Wall', '-Wextra', '-Werror', f'-I{TOTK}/ios/Sources',
+        run_probe(self, ['xcrun', 'clang', '-std=c11', '-Wall', '-Wextra', '-Werror', f'-I{TOTK.parent}/oot/ios/Sources',
                          str(TOTK / 'tests/device_motion/probe.c')])
 
 

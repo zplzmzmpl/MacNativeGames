@@ -59,7 +59,7 @@ class Writer(unittest.TestCase):
 
     def test_every_copy_is_the_same_file(self):
         copies = sorted((ROOT / 'games').glob('*/ios/tools/seed_image.py'))
-        self.assertGreaterEqual(len(copies), 2)
+        self.assertIn(ROOT / 'games/oot/ios/tools/seed_image.py', copies)
         self.assertEqual(len({p.read_bytes() for p in copies}), 1, [str(p.relative_to(ROOT)) for p in copies])
 
 
@@ -110,7 +110,7 @@ class RuntimeReader(unittest.TestCase):
 
 class Install(unittest.TestCase):
     def test_install_pushes_image_parts(self):
-        for g in ('oot', 'totk'):
+        for g in ('oot',):
             text = (ROOT / f'games/{g}/ios/tools/install_device.py').read_text()
             self.assertIn("write_parts(seed, imaged, Path(d)/folder, PART, push)", text, g)
             self.assertIn("write_pack(seed, loose, Path(d), folder, PART, push)", text, g)

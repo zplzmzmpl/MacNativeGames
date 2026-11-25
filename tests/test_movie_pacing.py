@@ -68,8 +68,7 @@ def build_and_run(game, prefix, folder):
 class MoviePacingEveryPort(unittest.TestCase):
     def test_ports_found(self):
         games = ports()
-        self.assertGreaterEqual(len(games), 20, games)
-        self.assertIn('mk8dx', games)
+        self.assertIn('oot', games)
         self.assertIn('totk', games)
         self.assertFalse(NXNATIVE.intersection(games))
 

@@ -50,10 +50,9 @@ class LauncherSource(unittest.TestCase):
     def test_other_games_ios_parts_and_tests_are_left_out(self):
         for name in self.files:
             self.assertFalse(re.match(r'(tests|windows_games)/', name), name)
-            self.assertFalse(re.match(r'games/[^/]+/(ios|prebuilt/ios-arm64)/', name), name)
+            self.assertFalse(re.match(r'games/[^/]+/(ios|prebuilt/ios-arm64|tests)/', name), name)
             self.assertNotIn(name.split('/')[1] if name.startswith('games/') else None, self.left_out, name)
-        self.assertIn('wonder', self.left_out)
-        self.assertNotIn('totk', self.left_out)
+        self.assertEqual(launcher_source.game_folders(), ['oot', 'totk'])
 
     def test_oot_shader_packaging_from_carried_source(self):
         # Use only files selected by the release pathspecs, in a fresh Python process.
@@ -106,7 +105,8 @@ class LauncherSource(unittest.TestCase):
     def test_no_carried_code_reads_a_left_out_folder(self):
         # the top-level tests/ is named only by the root Makefile (make check, the source gate of a checkout); the
         # games' own tests/ folders are kept
-        pattern = re.compile(r'games/(%s)\b|\bwindows_games/' % '|'.join(map(re.escape, self.left_out)))
+        paths = [r'\bwindows_games/', *(rf'games/{re.escape(name)}\b' for name in self.left_out)]
+        pattern = re.compile('|'.join(paths))
         found = []
         for name in self.files:
             path = REPO / name

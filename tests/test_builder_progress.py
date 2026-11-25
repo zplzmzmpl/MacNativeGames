@@ -130,7 +130,7 @@ class DriftAgainstBuildApp(unittest.TestCase):
         self.assertEqual({name for _, _, name in found}, set(KNOWN_STAGES))
 
     def test_literal_pieces_the_patterns_rely_on(self):
-        for piece in ('... still running (', 'Breath of the Wild {expected["display_version"]}; work folder', 'GB free on its volume)',
+        for piece in ('... still running (',
                       'update identified by verified ExeFS hashes:', "say(f'done in {", "print(f'\\nERROR: {e}'",
                       'print(f\'[{time.strftime("%H:%M:%S")}] {msg}\''):
             with self.subTest(piece=piece):
