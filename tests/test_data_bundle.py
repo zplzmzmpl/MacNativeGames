@@ -96,7 +96,8 @@ class DataBundle(unittest.TestCase):
              patch.object(build_app, 'copy_tree', side_effect=AssertionError('copied the work folder bundle')):
             build_app.place_data_bundle(bundle, staged, res, 'v143', installed=installed)
         clone.assert_called_once_with(before, target)
-        self.assertEqual((res / 'extracted/v143/romfs/romfs.bin').resolve(), target / 'Contents/Resources/romfs.bin')
+        self.assertEqual((res / 'extracted/v143/romfs/romfs.bin').resolve(),
+                         (target / 'Contents/Resources/romfs.bin').resolve())
         self.assertTrue(build_app.keep_game_data(staged, installed, verify=lambda app: True))
         self.assertEqual((target / 'Contents/Resources/romfs.bin').read_bytes(), b'romfs image')
 

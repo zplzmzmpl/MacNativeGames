@@ -9,6 +9,7 @@
 # The tests import compression.zstd (games/totk/scripts/make_romfs_patches.py), which is standard only from Python 3.14;
 # the README and the CI use that version, so prefer it when it is installed. PYTHON still overrides this.
 PYTHON ?= $(shell command -v python3.14 >/dev/null 2>&1 && echo python3.14 || echo python3)
+UNITTEST_FLAGS ?= -q
 CC ?= cc
 
 # UBSan flags shared by every C unit test. CI runs the same builds via `make check-c`.
@@ -41,7 +42,7 @@ C_TEST_EXTRA_agent_slot_limit_oot = -DAGENT_SLOT_LIMIT_H_PATH='"../games/oot/run
 .PHONY: check check-c
 
 check:
-	$(PYTHON) -m unittest discover -s tests -q
+	$(PYTHON) -m unittest discover -s tests $(UNITTEST_FLAGS)
 	@$(MAKE) --no-print-directory check-c
 
 check-c:

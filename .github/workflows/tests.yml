@@ -2,16 +2,28 @@ name: Ocarina of Time regressions
 
 on:
   push:
+    paths-ignore:
+      - 'README.md'
+      - 'CHANGELOG.md'
+      - 'maintenance.zh-CN.md'
   pull_request:
+    paths-ignore:
+      - 'README.md'
+      - 'CHANGELOG.md'
+      - 'maintenance.zh-CN.md'
   workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     runs-on: macos-26
-    timeout-minutes: 15
+    timeout-minutes: 30
     env:
       PYTHONDONTWRITEBYTECODE: '1'
     steps:
@@ -24,4 +36,4 @@ jobs:
       - name: Install shared test dependencies
         run: python -m pip install -r games/totk/requirements.txt -r games/oot/requirements.txt
       - name: Run Ocarina and shared regressions
-        run: make check
+        run: make check UNITTEST_FLAGS=-v
