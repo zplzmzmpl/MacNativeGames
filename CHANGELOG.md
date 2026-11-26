@@ -1,5 +1,10 @@
 # 更新记录
 
+## 2026-11-26 · GitHub 回归检查
+
+- 只改 Markdown 的推送和 PR 跳过 macOS 回归。包含代码或其他文件改动时仍会触发，Actions 页面也可以手动运行全套检查。对同一分支和同一触发事件，新运行会取消已被替代的旧运行。 [触发配置](.github/workflows/tests.yml)
+- 将 macOS 测试时限从 15 分钟延长至 30 分钟，日志逐项显示测试名称。APFS 数据包回归测试会解析比较双方的路径，消除 macOS 临时目录经 `/var` 或 `/private/var` 访问时产生的误报。 [调整提交](https://github.com/zplzmzmpl/MacNativeGames/commit/3c5143a6)
+
 ## 2026-11-26 · 本机版 Launcher 1.1.8
 
 审查了上游 `7ef42f53…786ddc00` 范围内 Action 命中的 5 个提交。和《时之笛》运行时、Launcher 更新及离线发布相关的改动已移植到 fork。Issue #1 已回复并标记为已完成。 [上游比较](https://github.com/ly05010419/MacNativeGames/compare/7ef42f53bf62e4646919b599256b39a9ae3f23ad...786ddc00880cacad63d3bd45497544d7edc50045) · [审查与处理结果](https://github.com/zplzmzmpl/MacNativeGames/issues/1#issuecomment-7191416973)
