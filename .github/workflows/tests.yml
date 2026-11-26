@@ -3,14 +3,10 @@ name: Ocarina of Time regressions
 on:
   push:
     paths-ignore:
-      - 'README.md'
-      - 'CHANGELOG.md'
-      - 'maintenance.zh-CN.md'
+      - '**.md'
   pull_request:
     paths-ignore:
-      - 'README.md'
-      - 'CHANGELOG.md'
-      - 'maintenance.zh-CN.md'
+      - '**.md'
   workflow_dispatch:
 
 permissions:
