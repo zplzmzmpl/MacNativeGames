@@ -71,7 +71,25 @@ class GpuError(unittest.TestCase):
         for words in ('slots held', 'forced takes', 'MTK_SCRATCH_FORCED', 'mtk_split_on()'):
             self.assertIn(words, report)
         # PR #2258: mesh draws in passes of their own by default only before Apple9 (M1 / M2); OOT_MESH_PASS_SPLIT forces it
-        self.assertIn('v=e&&*e?atoi(e)!=0:![g_dev supportsFamily:MTLGPUFamilyApple9];', tasks)
+        self.assertIn('int mode = env && *env ? atoi(env) : ![g_dev supportsFamily:MTLGPUFamilyApple9];', tasks)
+
+    def test_mesh_split_mode_two_tracks_the_encoder_that_actually_draws(self):
+        source = (NVN / 'nvn_mtl.m').read_text()
+        tasks = (NVN / 'nvn_mesh_tasks.inc').read_text()
+        for name in ('draw', 'draw_instanced', 'draw_indirect', 'draw_indexed_indirect', 'draw_indexed'):
+            body = source.split(f'static inline void enc_r_{name}(', 1)[1].split('\n}', 1)[0]
+            self.assertIn('mtk_note_draw(e, MTK_DRAW_PLAIN);', body)
+        opened = source.split('rp_begin_ex(int clear_only) {', 1)[1].split('\n}', 1)[0]
+        self.assertIn('g_mtk_pass_draw = MTK_DRAW_NONE;\n    g_enc = oot_bar_render_begin(pd);', opened)
+        for name in ('clear_quad', 'clear_ds_quad'):
+            body = source.split(f'static void {name}(', 1)[1].split('\n}', 1)[0]
+            self.assertLess(body.index('mtk_split_before_draw(MTK_DRAW_PLAIN);'), body.index('rp_begin();'))
+        body = source.split('static void draw_inner(const p_draw *dw, const p_draw_idx *di) {', 1)[1].split('\n}', 1)[0]
+        self.assertLess(body.index('mtk_split_before_draw(g_mtk.on ? MTK_DRAW_MESH : MTK_DRAW_PLAIN);'),
+                        body.index('rp_begin_ex(mode)'))
+        self.assertIn('mtk_note_draw(en, MTK_DRAW_MESH);', tasks)
+        mesh = tasks.split('static void mesh_tasks_draw(', 1)[1]
+        self.assertLess(mesh.index('defer_replay();'), mesh.index('g_mtk.on=1;'))
 
 
 if __name__ == '__main__':

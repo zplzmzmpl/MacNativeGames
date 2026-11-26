@@ -2307,11 +2307,39 @@ static inline void enc_r_address(id<MTL4RenderCommandEncoder> e, unsigned stage,
 }
 static inline void enc_r_vbuf(id<MTL4RenderCommandEncoder> e, NSUInteger i, uint64_t gpu) { enc_r_address(e, 0, i, gpu); }
 static inline void enc_r_args(id<MTL4RenderCommandEncoder> e, MTLRenderStages s, uint64_t gpu, NSUInteger i) { enc_r_address(e, s == MTLRenderStageVertex ? 0 : 1, i, gpu); }
-static inline void enc_r_draw(id<MTL4RenderCommandEncoder> e, MTLPrimitiveType p, NSUInteger v, NSUInteger n) { if (rs_using(e)) rs_put((nvn_encode_packet){.op=RS_DRAW,.u={p,v,n}},1); else [e drawPrimitives:p vertexStart:v vertexCount:n]; }
-static inline void enc_r_draw_instanced(id<MTL4RenderCommandEncoder> e, MTLPrimitiveType p, NSUInteger v, NSUInteger n, NSUInteger i, NSUInteger b) { if (rs_using(e)) rs_put((nvn_encode_packet){.op=RS_INSTANCED,.u={p,v,n,i,b}},1); else [e drawPrimitives:p vertexStart:v vertexCount:n instanceCount:i baseInstance:b]; }
-static inline void enc_r_draw_indirect(id<MTL4RenderCommandEncoder> e, MTLPrimitiveType p, uint64_t ind) { if (rs_using(e)) rs_put((nvn_encode_packet){.op=RS_INDIRECT,.u={p,ind}},1); else [e drawPrimitives:p indirectBuffer:ind]; }
-static inline void enc_r_draw_indexed_indirect(id<MTL4RenderCommandEncoder> e, MTLPrimitiveType p, MTLIndexType t, uint64_t gpu, NSUInteger len, uint64_t ind) { if (rs_using(e)) rs_put((nvn_encode_packet){.op=RS_INDEXED_INDIRECT,.u={p,t,gpu,len,ind}},1); else [e drawIndexedPrimitives:p indexType:t indexBuffer:gpu indexBufferLength:len indirectBuffer:ind]; }
-static inline void enc_r_draw_indexed(id<MTL4RenderCommandEncoder> e, MTLPrimitiveType p, NSUInteger n, MTLIndexType t, uint64_t gpu, NSUInteger len, NSUInteger i, NSInteger bv, NSUInteger bi) { if (rs_using(e)) rs_put((nvn_encode_packet){.op=RS_INDEXED,.u={p,n,t,gpu,len,i,(uint64_t)bv,bi}},1); else [e drawIndexedPrimitives:p indexCount:n indexType:t indexBuffer:gpu indexBufferLength:len instanceCount:i baseVertex:bv baseInstance:bi]; }
+typedef enum { MTK_DRAW_NONE, MTK_DRAW_PLAIN, MTK_DRAW_MESH } mtk_draw_kind;
+static id<MTL4RenderCommandEncoder> g_enc;
+static mtk_draw_kind g_mtk_pass_draw;
+static int g_mtk_split_mode = -1;
+static int mtk_split_on(void);
+
+/* Record what the active encoder actually draws. Preparation may end the previous pass and open a new one. */
+static inline void mtk_note_draw(id<MTL4RenderCommandEncoder> en, mtk_draw_kind kind) {
+    if (g_mtk_split_mode != 2 || en != g_enc) return;
+    if (g_mtk_pass_draw != MTK_DRAW_NONE && g_mtk_pass_draw != kind)
+        MDIE("OOT_MESH_PASS_SPLIT=2 would mix mesh and ordinary draws");
+    g_mtk_pass_draw = kind;
+}
+static inline void enc_r_draw(id<MTL4RenderCommandEncoder> e, MTLPrimitiveType p, NSUInteger v, NSUInteger n) {
+    mtk_note_draw(e, MTK_DRAW_PLAIN);
+    if (rs_using(e)) rs_put((nvn_encode_packet){.op=RS_DRAW,.u={p,v,n}},1); else [e drawPrimitives:p vertexStart:v vertexCount:n];
+}
+static inline void enc_r_draw_instanced(id<MTL4RenderCommandEncoder> e, MTLPrimitiveType p, NSUInteger v, NSUInteger n, NSUInteger i, NSUInteger b) {
+    mtk_note_draw(e, MTK_DRAW_PLAIN);
+    if (rs_using(e)) rs_put((nvn_encode_packet){.op=RS_INSTANCED,.u={p,v,n,i,b}},1); else [e drawPrimitives:p vertexStart:v vertexCount:n instanceCount:i baseInstance:b];
+}
+static inline void enc_r_draw_indirect(id<MTL4RenderCommandEncoder> e, MTLPrimitiveType p, uint64_t ind) {
+    mtk_note_draw(e, MTK_DRAW_PLAIN);
+    if (rs_using(e)) rs_put((nvn_encode_packet){.op=RS_INDIRECT,.u={p,ind}},1); else [e drawPrimitives:p indirectBuffer:ind];
+}
+static inline void enc_r_draw_indexed_indirect(id<MTL4RenderCommandEncoder> e, MTLPrimitiveType p, MTLIndexType t, uint64_t gpu, NSUInteger len, uint64_t ind) {
+    mtk_note_draw(e, MTK_DRAW_PLAIN);
+    if (rs_using(e)) rs_put((nvn_encode_packet){.op=RS_INDEXED_INDIRECT,.u={p,t,gpu,len,ind}},1); else [e drawIndexedPrimitives:p indexType:t indexBuffer:gpu indexBufferLength:len indirectBuffer:ind];
+}
+static inline void enc_r_draw_indexed(id<MTL4RenderCommandEncoder> e, MTLPrimitiveType p, NSUInteger n, MTLIndexType t, uint64_t gpu, NSUInteger len, NSUInteger i, NSInteger bv, NSUInteger bi) {
+    mtk_note_draw(e, MTK_DRAW_PLAIN);
+    if (rs_using(e)) rs_put((nvn_encode_packet){.op=RS_INDEXED,.u={p,n,t,gpu,len,i,(uint64_t)bv,bi}},1); else [e drawIndexedPrimitives:p indexCount:n indexType:t indexBuffer:gpu indexBufferLength:len instanceCount:i baseVertex:bv baseInstance:bi];
+}
 static inline void enc_r_store(id<MTL4RenderCommandEncoder> e, int depth, MTLStoreAction action, NSUInteger index) { if (rs_using(e)) rs_put((nvn_encode_packet){.op=RS_STORE,.u={(uint64_t)depth,action,index}},0); else if (depth == 1) [e setDepthStoreAction:action]; else if (depth == 2) [e setStencilStoreAction:action]; else [e setColorStoreAction:action atIndex:index]; }
 static inline id<MTL4ComputeCommandEncoder> enc_c_begin(MTLComputePassDescriptor *d) { atomic_store_explicit(&g_oot_bar_last, 0, memory_order_relaxed); (void)d; blit_close(); rs_sync(); pt_mark(g_cb, 'C', nil); id<MTL4ComputeCommandEncoder> e = [g_cb computeCommandEncoder]; if (bar_start_on()) [e barrierAfterQueueStages:MTLStageAll beforeStages:MTLStageAll visibilityOptions:bar_vis()]; [e setArgumentTable:g_ct]; return e; }
 static inline id<MTLComputeCommandEncoder> enc_c_begin_concurrent(id<MTLCommandBuffer> cb) { return [cb computeCommandEncoderWithDispatchType:MTLDispatchTypeConcurrent]; }
@@ -2329,7 +2357,6 @@ static inline void enc_b_copy_texture(id e, id<MTLTexture> s, NSUInteger sl, NSU
 static void blit_note(void);   // 逐通道转储：拷贝 / 缓冲更新结束了渲染通道（定义在 PD 之后） | Per-pass dump: a copy / buffer update ended the render pass (defined after PD)
 static void pd_update_bytes(const void *data, uint64_t dst, uint64_t n, uint64_t seq);
 static void pd_xfer(const char *what, uint64_t src, uint64_t dst, uint64_t n);   // TOTK pass dump: 'X' lines for GPU copies / inline uniform updates (defined after PD)
-static id<MTL4RenderCommandEncoder> g_enc;   // tentative declaration, defined with the render pass state
 static uint64_t g_blit_opens, g_blit_splits, g_upd_n, g_upd_split, g_copy_n, g_copy_split;   // TOTK: copy encoders per cause (stats)
 /* Reusing the open copy encoder needs a barrier between copies too: Metal 4 does not run the commands of one encoder in
    recording order, so a write then a read (or two writes) of the same range can swap (D2R Mobile 44a6770: without it a
@@ -7411,6 +7438,9 @@ static void vr_ui_snapshot_scene(void) {
 #endif
 static id<MTL4RenderCommandEncoder> rp_begin_ex(int clear_only);
 static id<MTL4RenderCommandEncoder> rp_begin(void) { return rp_begin_ex(0); }
+static inline void mtk_split_before_draw(mtk_draw_kind kind) {
+    if (g_enc && g_mtk_pass_draw != MTK_DRAW_NONE && g_mtk_pass_draw != kind) rp_end();
+}
 static int rt_none(void); static void noatt_dims(NSUInteger *w, NSUInteger *h);
 /* Reuse only completed query storage. When every pooled buffer is in
  * flight, an overflow buffer retires through the existing submission fence;
@@ -7656,6 +7686,8 @@ static id<MTL4RenderCommandEncoder> rp_begin_ex(int clear_only) {
     }
     else if (uw_ratio()) canvas_learn(pd);   // key 4: the canvas the UI is squeezed in
     if (g_eye_pass) eye_note_pass(pd);   // stereo replay: this eye's picture
+    if (g_mtk_split_mode < 0) mtk_split_on();
+    g_mtk_pass_draw = MTK_DRAW_NONE;
     g_enc = oot_bar_render_begin(pd);
     args_dirty_all();
     g_stat_pass++;
@@ -17775,6 +17807,7 @@ static void clear_quad_core(id<MTL4RenderCommandEncoder> en, const uint32_t cfmt
     enc_r_draw(en, MTLPrimitiveTypeTriangle, 0, 3);
 }
 static void clear_quad(const p_clear_color *c) {
+    mtk_split_before_draw(MTK_DRAW_PLAIN);
 #if !defined(GAME_BOTW) && !defined(GAME_NS2)   /* TOTK: the colour snapshot (csnap) */
     csnap_clear();   // the clear changes the target: a later reader copies again
 #endif
@@ -17828,6 +17861,7 @@ static void clear_ds_core(id<MTL4RenderCommandEncoder> en, const uint32_t cfmt[8
     enc_r_draw(en, MTLPrimitiveTypeTriangle, 0, 3);
 }
 static void clear_ds_quad(const p_clear_ds *c) {
+    mtk_split_before_draw(MTK_DRAW_PLAIN);
     gpu_path_on("TOTK_GPU_MIDCLEAR", "mid-pass / masked / scissored depth-stencil clear");
     if (g_enc && ((c->depth_mask && !g_pass.hd) || (c->stencil_mask && !g_pass.hs))) rp_end();
     id<MTL4RenderCommandEncoder> en = rp_begin(); if (!en) return;
@@ -19918,6 +19952,7 @@ static void draw_inner(const p_draw *dw, const p_draw_idx *di) {
         if (g_rt_draw_ser[k] != R.rt.color[0]->serial) { g_rt_draw_ser[k] = R.rt.color[0]->serial; g_rt_draws[k] = 0; } g_rt_draws[k]++; }   // the shot log's draw count
     if (S.poly.cull == NVN_FACE_FRONT_AND_BACK) { g_draw_skip[5]++; return; }
     if (exp_skip_fs(pr)) return;   // TOTK_EXP_SKIP_FS (measurement only)
+    mtk_split_before_draw(g_mtk.on ? MTK_DRAW_MESH : MTK_DRAW_PLAIN);
     // 续用的通道可能是少挂深度 / 模板开的（开法 2 / 3 / 4）：这次绘制要的平面没挂，就在它之前切开（重开时按新前瞻挂）
     // The continued render pass may have been opened with fewer depth / stencil attachments (open modes 2 / 3 / 4): if the plane this draw needs is not attached, split before it (on reopen, attach per the new lookahead)
     if (g_rt_merged && g_enc_mode != 0 && (((S.ds.dt || S.ds.dw) && !g_pass.hd) || (S.ds.st && !g_pass.hs))) {

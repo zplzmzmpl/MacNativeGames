@@ -340,6 +340,7 @@ static void mtk_encode(id<MTL4RenderCommandEncoder> en) {
     enc_r_vbuf(en,MTK_SCRATCH_BUFFER,mtk_scratch_gpu());mtk_scratch_report();   // device stage memory of the mesh shaders the translator put there (MeshStage.cs)
     if(mtk_geo_selected(g_mtk.fs))enc_r_vbuf(en,30,g_mtk_geometry?g_mtk_geometry.gpuAddress:zero_bank_gpu());
     int timing=ms_time_begin(en,ms->key,ts?ts->key:NULL,g_mtk.fs?g_mtk.fs->key:NULL,g_mtk.indirect_gpu,g_mtk.first,g_mtk.count,ms->mesh_threads,g_mtk.profile_grid);
+    mtk_note_draw(en, MTK_DRAW_MESH);
     if(blocks){
         /* The object stage reads the workgroup count from word 0 of the grid record (an indirect draw's converted record, a
            direct draw's copy) and each object threadgroup launches its block. An indirect draw's count is known only on the
@@ -368,18 +369,27 @@ static void mtk_encode(id<MTL4RenderCommandEncoder> en) {
    (OOT_DRAW_BARRIERS=0 OOT_MESH_BATCH=0), clamped vertex indices and at least one launched mesh group did not. Ending the
    render pass before and after each mesh draw did: no GPU error in 45 minutes of Kokiri with one submission a pass, and
    through the Deku Tree with the normal submissions. The cost is the passes' load / store on the tile memory.
-   OOT_MESH_PASS_SPLIT=1 / 0 forces it on / off on any Mac. OOT_MESH_RING=1 (diagnostic) also keeps each mesh draw in a
+   OOT_MESH_PASS_SPLIT=1 / 0 forces it on / off on any Mac. Mode 2 (opt-in, upstream PR #2324) splits only when switching
+   between ordinary draws and mesh draws. OOT_MESH_RING=1 (diagnostic) also keeps each mesh draw in a
    ring with its frame / chunk, shaders, counts and the GPU's copy of an indirect draw's arguments, printed at the first
    GPU hang (mtk_ring_dump, from gpu_hang_guard); with TOTK_CHUNK_DRAWS=1 TOTK_CHUNK_FIRST=1 a hang report names one draw. */
 typedef struct { uint64_t frame; int chunk; uint32_t count, first; int indirect; char ts[17], ms[17], fs[17]; } mtk_ring_ent;
 #define MTK_RING 256
 static mtk_ring_ent g_mtk_ring[MTK_RING]; static uint64_t g_mtk_ring_n; static id<MTLBuffer> g_mtk_ring_args;
+static const char *mtk_split_description(int mode) {
+    if (mode == 1) return "in render passes of their own";
+    if (mode == 2) return "in passes separate from ordinary draws";
+    return "share render passes";
+}
 static int mtk_split_on(void) {
-    static int v=-1;
-    if(v<0){const char *e=getenv("OOT_MESH_PASS_SPLIT");
-        v=e&&*e?atoi(e)!=0:![g_dev supportsFamily:MTLGPUFamilyApple9];
-        MLOG("[mesh] mesh draws %s (OOT_MESH_PASS_SPLIT%s)",v?"in render passes of their own":"share render passes",e&&*e?"":", by GPU family");}
-    return v;
+    if (g_mtk_split_mode < 0) {
+        const char *env = getenv("OOT_MESH_PASS_SPLIT");
+        int mode = env && *env ? atoi(env) : ![g_dev supportsFamily:MTLGPUFamilyApple9];
+        g_mtk_split_mode = mode >= 0 && mode <= 2 ? mode : 1;
+        MLOG("[mesh] mesh draws %s (OOT_MESH_PASS_SPLIT=%d%s)", mtk_split_description(g_mtk_split_mode),
+             g_mtk_split_mode, env && *env ? "" : ", by GPU family");
+    }
+    return g_mtk_split_mode;
 }
 static int mtk_ring_on(void) { static int v=-1; if(v<0){const char *e=getenv("OOT_MESH_RING");v=e&&atoi(e)!=0;} return v; }
 static void mtk_ring_dump(void) {
@@ -402,7 +412,7 @@ static void mtk_scratch_hang_report(void) {
     const uint32_t *h=g_mtk_scratch.contents;unsigned held=0;for(unsigned i=0;i<g_mtk_scratch_slots;i++)held+=h[MTK_SCRATCH_FLAGS+i]!=0;
     MLOG("【红】[mesh] at the GPU hang (frame %llu): device stage memory slots held %u of %u, counter %u, forced takes %u; mesh draws %s",
          (unsigned long long)atomic_load(&g_cur_frame),held,g_mtk_scratch_slots,h[0],h[MTK_SCRATCH_FORCED],
-         mtk_split_on()?"in render passes of their own":"share render passes");
+         mtk_split_description(mtk_split_on()));
 }
 static void mtk_ring_note(const p_draw *dw,NvShader *ts,NvShader *ms,NvShader *fs) {
     if(!mtk_ring_on())return;
@@ -446,6 +456,13 @@ static void mesh_tasks_draw(const p_draw *dw) {
     if(!raster||raster->sh[1]!=pr->sh[1]||raster->sh[0]){raster=[NvProg new];raster->sh[1]=pr->sh[1];pr->geo_lean_ras=raster;}
     { extern _Atomic uint32_t g_skip_ms; uint32_t sk=atomic_load_explicit(&g_skip_ms,memory_order_relaxed);   // diagnostic "flag skip_ms": leave out this mesh shader's draws
       if(sk){char h[8];memcpy(h,ms->key,7);h[7]=0;if((uint32_t)strtoul(h,NULL,16)==sk)return;} }
+    int split = mtk_split_on();
+    /* Replay a pass chain's ordinary draws before installing the mesh draw state. The mesh draw then starts its own
+       pass at the boundary, just as when the ordinary draws were recorded directly into that pass. */
+    if (split == 2 && !g_defer_replaying && g_defer_natq > 0) {
+        mtk_split_before_draw(MTK_DRAW_PLAIN);
+        if (rp_begin()) defer_replay();
+    }
     g_mtk.on=1;g_mtk.ts=ts;g_mtk.ms=ms;g_mtk.fs=pr->sh[1];g_mtk.first=(uint32_t)dw->first;g_mtk.count=(uint32_t)dw->count;
     g_mtk.first_gpu=g_mtk.indirect_gpu=0;
     g_mtk.profile_grid=-1;
@@ -467,7 +484,7 @@ static void mesh_tasks_draw(const p_draw *dw) {
             [g_commit_blocks addObject:^{[[NSData dataWithBytes:(uint8_t *)capture.contents+ca length:8]writeToFile:path atomically:YES];}];
         }
     }
-    if(mtk_split_on()&&g_enc)rp_end();
+    if(split==1&&g_enc)rp_end();
     if(mtk_ring_on()){mtk_ring_note(dw,ts,ms,pr->sh[1]);if(g_blit){enc_b_end(g_blit);g_blit=nil;}}
     mtk_geo_prepare(ms,pr->sh[1]);mtk_capture_storage(pr);
     g_geo_ras.pr=raster;g_pso_dirty=1;
@@ -475,6 +492,6 @@ static void mesh_tasks_draw(const p_draw *dw) {
     g_geo_ras.pr=nil;g_mtk.on=0;args_dirty_all();g_pso_dirty=1;
     mesh_indirect_written(pr);mesh_indirect_stats();
     mesh_batch_written(pr);
-    if(mtk_split_on()&&g_enc)rp_end();
+    if(split==1&&g_enc)rp_end();
     static int once;if(!once++)MLOG("[mesh] first native draw: %u workgroups from %u",g_mtk.count,g_mtk.first);
 }
