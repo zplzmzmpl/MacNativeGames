@@ -96,7 +96,7 @@ Read the `ERROR:` line and the log file in `<work folder>/logs/`, fix the cause,
 | `--shared-fonts <folder>: …` | That folder is not the six fonts of a build of this repository: leave `--shared-fonts` out to use the open-source fonts. |
 | `does not match its pinned SHA-256` (in `[deps]` lines) | A download was cut off or changed: run the same command again; if it repeats, open an issue with the line. |
 | `no Metal compiler (Xcode -> Settings -> Components: Metal Toolchain)` | Install the full Xcode and its Metal toolchain. |
-| `the work folder … records, …, cannot be found, nor the folder it was in` | The work folder the app remembers is on a disk that is not connected, or was moved. Connect the disk and run the same command again, or add `--work "<a folder of your choice>"` ([Folders](../../../docs/install.md#folders)). A deleted work folder is made again by itself. |
+| `the work folder … is on …, a volume that is not mounted` | Mount the volume and try again, or add `--work "<a folder of your choice>"` ([Folders](../../../docs/install.md#folders)). On a mounted volume, the update recreates a missing work directory and its parents. |
 | `… must remain outside the source checkout` | Put `--work` and `-o` outside the `MacNativeGames` folder. |
 | `unfinished App staging directory exists; left untouched` | A build stopped while writing the app: delete the `.Ocarina of Time.app.ready` folder next to the app, then build again. |
 | `this title currently uses its original rendering options` | Leave out `--native-4k`, `--native-5k` and `--vr`. |

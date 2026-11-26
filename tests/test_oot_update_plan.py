@@ -2,6 +2,7 @@
 the checks update_runtime makes first): "full" when the work folder cannot take an express update. 2026-11-13: --plan said
 "express" for every OOT app, so after the chain moved to v27 MNG Launcher and tools/mng.py started an express update that
 stopped at once ("the shaders need the full build")."""
+from functools import partial
 from pathlib import Path
 import plistlib
 import sys
@@ -34,6 +35,58 @@ class OcarinaPlan(unittest.TestCase):
             plan = update_runtime.plan(oot_app(root, work))
         self.assertEqual((plan['kind'], plan['game']), ('full', 'oot'))
         self.assertIn('is missing', plan['reason'])
+
+    def test_a_mounted_volume_can_recreate_a_deleted_work_folder_and_its_parents(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            volumes = root / 'Volumes'
+            volume = volumes / 'External'
+            volume.mkdir(parents=True)
+            work = volume / 'missing/parent/work'
+            app = oot_app(root, work)
+            builder = update_runtime.build_app
+            recorded = partial(builder._recorded_work_path, volumes=volumes, mounted=lambda p: p == volume)
+            with mock.patch.object(builder, '_recorded_work_path', side_effect=recorded):
+                plan = update_runtime.plan(app)
+            self.assertEqual((plan['kind'], plan['work']), ('full', str(work)))
+            self.assertIn('made again there', plan['work_why'])
+            self.assertFalse(work.exists())
+
+    def test_an_unmounted_volume_is_refused_even_if_its_directories_exist(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            volumes = root / 'Volumes'
+            work = volumes / 'External/work'
+            work.parent.mkdir(parents=True)
+            app = oot_app(root, work)
+            builder = update_runtime.build_app
+            recorded = partial(builder._recorded_work_path, volumes=volumes, mounted=lambda p: False)
+            with mock.patch.object(builder, '_recorded_work_path', side_effect=recorded):
+                missing_plan = update_runtime.plan(app)
+                work.mkdir()
+                existing_plan = update_runtime.plan(app)
+            for plan in (missing_plan, existing_plan):
+                self.assertEqual(plan['kind'], 'error')
+                self.assertIn('not mounted', plan['reason'])
+
+    def test_launcher_full_build_uses_the_same_recorded_volume_check(self):
+        from tools.builder_jobs import build_job
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            volumes = root / 'Volumes'
+            work = volumes / 'External' / 'missing' / 'work'
+            request = {'app': str(oot_app(root, work)), 'plan': {'game': 'oot', 'base': 'game.nup'}}
+            builder = build_job.repo.build_app()
+            for mounted in (False, True):
+                recorded = partial(builder._recorded_work_path, volumes=volumes, mounted=lambda p: mounted)
+                with mock.patch.object(builder, '_recorded_work_path', side_effect=recorded), \
+                     mock.patch.object(build_job, 'express_plan', return_value={'kind': 'full'}):
+                    if not mounted:
+                        with self.assertRaisesRegex(build_job.Refused, 'not mounted'):
+                            build_job.command(request)
+                    else:
+                        _, _, selected, _, kind, _ = build_job.command(request)
+                        self.assertEqual((selected, kind), (work, 'full'))
 
     def test_the_plan_takes_the_update_s_own_answer(self):
         with tempfile.TemporaryDirectory() as tmp:

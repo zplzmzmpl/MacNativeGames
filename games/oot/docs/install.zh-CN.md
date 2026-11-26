@@ -95,6 +95,7 @@ Launcher 使用随附的源码。要应用本仓库的新提交，先安装包�
 | `does not match its pinned SHA-256`（`[deps]` 开头的行） | 下载中断或内容变了：再运行同一条命令；还是这样就开 issue 并贴上这一行。 |
 | `no Metal compiler (Xcode -> Settings -> Components: Metal Toolchain)` | 安装完整的 Xcode 和它的 Metal 工具链。 |
 | `… must remain outside the source checkout` | 把 `--work` 和 `-o` 放到 `MacNativeGames` 目录外面。 |
+| `the work folder … is on …, a volume that is not mounted` | 挂载报错指出的卷后重试，或用 `--work <目录>` 指定新工作目录。卷已挂载时，更新会在原处重建缺失的工作目录和上层目录。 |
 | `unfinished App staging directory exists; left untouched` | 上次打包在写 App 时停下了：删掉 App 旁边的 `.Ocarina of Time.app.ready` 目录，再打包。 |
 | `this title currently uses its original rendering options` | 去掉 `--native-4k`、`--native-5k` 和 `--vr`。 |
 | `game did not finish its normal close; App left untouched` | 退出游戏后再打包。 |

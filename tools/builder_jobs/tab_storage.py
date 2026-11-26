@@ -58,8 +58,8 @@ def refusal(reason):
                   '这个文件夹在放 App 的文件夹里：工作文件夹要放在它外面（docs/install.md 的 Folders 一节）。'),
         'running': t('The game is running: close it first.', '游戏开着：先关掉游戏。'),
         'building': t('A build or an update is running: wait until it ends.', '正在打包或更新：等它结束。'),
-        'unreachable': t('The folder the app records cannot be found, nor the folder it was in (a disk not connected?).',
-                         '找不到 App 记录的文件夹，也找不到它的上层文件夹（磁盘没接上？）。'),
+        'unreachable': t('The volume holding the recorded work folder is not mounted. Mount it and try again.',
+                         'App 记录的工作文件夹所在的卷未挂载。请挂载后重试。'),
     }
     return words.get(reason, reason)
 
@@ -99,7 +99,7 @@ def protected(ctx):
 def work_folder(ctx):
     """(the work folder the app's next update uses, kind): kind is recorded, recreated (recorded, deleted, made again
     there by the next update), unrecorded (an app built before 31 October 2026: the old folder next to it) or
-    unreachable (recorded on a disk or in a folder that is gone)."""
+    unreachable (recorded on an unmounted volume)."""
     b = repo.build_app()
     fallback = FALLBACK.get(ctx.spec.id, f'{ctx.spec.data_folder}_build')
     try:
@@ -173,7 +173,7 @@ def folder_view(ctx, folder):
     else:
         raise TabError(t(f'no folder {folder!r}: one of {", ".join(FOLDERS)}', f'没有 {folder!r} 这个文件夹：只有 {", ".join(FOLDERS)}'))
     return {'id': folder, 'label': label, 'path': str(path), 'kind': kind, 'where': where, 'note': note,
-            'exists': path.is_dir(), 'movable': folder == 'work' and kind != 'unreachable',
+            'exists': kind != 'unreachable' and path.is_dir(), 'movable': folder == 'work' and kind != 'unreachable',
             'prunable': folder == 'work' and kind != 'unreachable' and pruner(ctx)[0] is not None,
             'size': None, 'detail': '', 'confirm': confirm_work() if folder == 'work' else ''}
 
@@ -271,6 +271,8 @@ def state(ctx):
 
 def measure(ctx, folder):
     view = folder_view(ctx, folder)
+    if view['kind'] == 'unreachable':
+        raise TabError(refusal('unreachable'))
     module = pruner(ctx)[0] if folder == 'work' else None
     # a safe clean's trash (build/.trash-*) is being deleted in the background: it is not counted, so the size shows
     # what stays right after the clean

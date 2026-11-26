@@ -90,7 +90,10 @@ def command(request, python=sys.executable):
     out = Path(request['app']).expanduser() if request.get('app') else \
         Path(request['output_dir']).expanduser() / f'{repo.GAMES[plan["game"]]}.app'
     work_root = (request.get('work_root') or '').strip()
-    work = b.default_work(out, plan['game'])[0] if out.is_dir() or not work_root else Path(work_root).expanduser() / plan['game']
+    try:
+        work = b.default_work(out, plan['game'])[0] if out.is_dir() or not work_root else Path(work_root).expanduser() / plan['game']
+    except b.BuildError as error:
+        raise Refused(str(error)) from None
     if out.is_dir():
         up = express_plan(out, python, quick=bool(request.get('quick')))
         if up['kind'] in ('express', 'fast') and up.get('game') == plan['game']:

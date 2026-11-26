@@ -2358,41 +2358,43 @@ def default_work(out, game):
     apps in a folder whose parent cannot be written (/Applications), ~/MacNativeGames-work/<game>. Until then the default
     was a TOTK_build next to the game file, and the Launcher used a third place."""
     out = Path(out)
-    try:
-        recorded = plistlib.loads((out / 'Contents/Info.plist').read_bytes()).get('MNGWorkFolder')
-    except (OSError, ValueError, plistlib.InvalidFileException, AttributeError):
-        recorded = None
-    if isinstance(recorded, str) and recorded and Path(recorded).parent.is_dir():
-        return Path(recorded), f'recorded by {out.name}'
+    work = _recorded_work_path(out)
+    if work is not None:
+        return work, f'recorded by {out.name}'
     base = out.parent.parent
     if base == Path(base.anchor) or not os.access(base, os.W_OK):
         base = Path.home()
     return base / WORK_FOLDERS / game, f'{WORK_FOLDERS}/{game} beside the folder of the app'
 
 
-def recorded_work_folder(app, name):
-    """The work folder of an update run without --work, and why: the one the app records (record_update_source), so the
-    update reuses the files of the build that made the app. Only an app that records none (built before 31 October 2026)
-    falls back to <name> next to the app. A recorded folder that was deleted is made again where it was: an app that
-    carries its game data needs none of its old files, and one that does says so later (game_data). A recorded folder
-    whose parent is gone too (a disk not connected, a volume deleted) is an error naming both ways out, never a new
-    folder next to the app. 2026-11-11: the fallback was the only default, and an update of an app built with --work
-    made a second 2.2 GB work folder in the folder that holds the apps, which the updated app then recorded."""
-    app = Path(app)
+def _recorded_work_path(app, *, volumes=Path('/Volumes'), mounted=os.path.ismount):
+    """Find the recorded path, checking its volume before trusting its directories."""
     try:
         recorded = plistlib.loads((app / 'Contents/Info.plist').read_bytes()).get('MNGWorkFolder')
     except (OSError, ValueError, plistlib.InvalidFileException, AttributeError):
         recorded = None
-    fallback = app.parent / name
-    if isinstance(recorded, str) and recorded:
-        if Path(recorded).is_dir():
-            return Path(recorded).resolve(), 'recorded by the app'
-        if Path(recorded).parent.is_dir():
-            return Path(recorded), 'recorded by the app; it was deleted, so it is made again there'
-        raise BuildError(f'the work folder {app.name} records, {recorded}, cannot be found, nor the folder it was in (a disk '
-                         f'that is not connected, or a folder moved or deleted): connect that disk and run the same command '
-                         f'again, or pass --work <a folder of your choice> (docs/install.md, Folders); the app then records it')
-    return fallback, f'the app records no work folder; using {name} next to the app'
+    if not isinstance(recorded, str) or not recorded:
+        return None
+    work = Path(recorded)
+    if work.is_relative_to(volumes):
+        parts = work.relative_to(volumes).parts
+        if parts:
+            volume = volumes / parts[0]
+            if not mounted(volume):
+                raise BuildError(f'the work folder {app.name} records, {work}, is on {volume}, a volume that is not mounted. '
+                                 f'Connect or mount the volume and try again, or pass --work <a folder of your choice>.')
+    return work
+
+
+def recorded_work_folder(app, name):
+    """Reuse or recreate the app's recorded folder, with the legacy fallback for apps without a record."""
+    app = Path(app)
+    work = _recorded_work_path(app)
+    if work is None:
+        return app.parent / name, f'the app records no work folder; using {name} next to the app'
+    if work.is_dir():
+        return work.resolve(), 'recorded by the app'
+    return work, 'recorded by the app; it is missing, so it is made again there'
 
 
 def source_commit():

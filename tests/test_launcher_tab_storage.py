@@ -2,6 +2,7 @@
 cache, their sizes, cleaning (only their contents, never a game, save, app or this checkout) and moving the work folder,
 with the refusals in words. Everything happens under a temporary folder and a temporary home."""
 import fcntl
+from functools import partial
 import os
 from pathlib import Path
 import plistlib
@@ -80,14 +81,30 @@ class StorageTab(unittest.TestCase):
     def test_a_deleted_recorded_folder_and_an_app_recording_none_are_said(self):
         shutil.rmtree(self.work)
         self.assertEqual(self.ok('state')['folders'][0]['kind'], 'recreated')
-        record(self.app, self.tmp / 'gone/disk/totk')
+        record(self.app, self.tmp / 'gone/folder/totk')
+        self.assertEqual(self.ok('state')['folders'][0]['kind'], 'recreated')
+        record(self.app, Path('/Volumes/mng-unmounted-volume-for-storage-test/work/totk'))
         self.assertEqual(self.ok('state')['folders'][0]['kind'], 'unreachable')
-        self.assertIn('cannot be found', self.refused('clean', folder='work'))
+        self.assertIn('not mounted', self.refused('clean', folder='work'))
         info = plistlib.loads((self.app / 'Contents/Info.plist').read_bytes())
         del info['MNGWorkFolder']
         (self.app / 'Contents/Info.plist').write_bytes(plistlib.dumps(info))
         work = self.ok('state')['folders'][0]
         self.assertEqual((work['kind'], work['path']), ('unrecorded', str(self.apps / 'TOTK_build')))
+
+    def test_a_directory_left_at_an_unmounted_volume_is_not_measured_or_cleaned(self):
+        volumes = self.tmp / 'Volumes'
+        work = volumes / 'External' / 'workspace'
+        write(work / 'keep')
+        record(self.app, work)
+        builder = tab_storage.repo.build_app()
+        recorded = partial(builder._recorded_work_path, volumes=volumes, mounted=lambda p: False)
+        with mock.patch.object(builder, '_recorded_work_path', side_effect=recorded):
+            folder = self.ok('state')['folders'][0]
+            self.assertEqual((folder['kind'], folder['exists']), ('unreachable', False))
+            self.assertIn('not mounted', self.refused('measure', folder='work'))
+            self.assertIn('not mounted', self.refused('clean', folder='work'))
+        self.assertTrue((work / 'keep').is_file())
 
     def test_state_asks_the_work_folder_question_without_measuring(self):
         # the window measures only when asked (user 2026-11-12), so Clean must have its question before any size
