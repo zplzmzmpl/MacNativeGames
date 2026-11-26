@@ -3,7 +3,7 @@ would download, so a player needs no network (user 2026-11-20; most players are 
 
     python3 -m tools.deps.offline_pack build <store>   at a release, online: fills <store> (files/, wheels/, git/,
                                                        sources/, manifest.json); what this Mac already has is reused
-    python3 -m tools.deps.offline_pack check <store>   with the network off (storage_guard.py run --offline): from an
+    python3 -m tools.deps.offline_pack check <store>   with external connections blocked by the check itself: from an
                                                        empty deps cache, takes every item from the store and makes it;
                                                        records the manifest it passed for in <store>/.checked.json
 A release (MNG-Launcher make_app.py) carries a store only when `check` passed for its very manifest (checked()), so
@@ -18,9 +18,11 @@ The manifest has no date, so building again with nothing new leaves it (and the 
 Python 3.10 or later (run it with the build's Python 3.14)."""
 import argparse
 import ast
+import errno
 import json
 import os
 import shutil
+import socket
 import subprocess
 import sys
 import tempfile
@@ -42,6 +44,25 @@ PLATFORM = 'macosx_14_0_arm64'
 # GPL code the store carries as a program: its source goes beside it (sources/)
 GPL_SOURCES = ('zbic==1.0.1.post1',)
 CHECKED = '.checked.json'   # check's record: the manifest it passed for, with the network off
+SANDBOX = '/usr/bin/sandbox-exec'
+NO_NETWORK = ('(version 1)\n(allow default)\n(deny network-outbound (remote ip))\n'
+              '(allow network-outbound (remote ip "localhost:*"))')
+INSIDE = 'MNG_OFFLINE_CHECK_NO_NETWORK'
+PROBE = ('192.0.2.1', 443)   # TEST-NET-1, reserved for documentation
+
+
+def network_denied(connect=None):
+    """Check for a permission error rather than an unreachable host or timeout."""
+    connect = connect or (lambda: socket.create_connection(PROBE, timeout=2).close())
+    try:
+        connect()
+    except OSError as error:
+        return error.errno in (errno.EPERM, errno.EACCES)
+    return False
+
+
+def without_network(argv):
+    return [SANDBOX, '-p', NO_NETWORK, *map(str, argv)]
 
 
 def constant(path, name):
@@ -285,6 +306,9 @@ def build(store, python):
 def check(store, python):
     """Every item from the store alone, in an empty deps cache: raises on the first one that is missing."""
     store = store.resolve()
+    if not network_denied():
+        raise RuntimeError('the offline check needs external connections to be blocked. Run '
+                           '`python3 -m tools.deps.offline_pack check <store>` to apply the network sandbox.')
     with tempfile.TemporaryDirectory() as t:
         tmp = Path(t)
         env = offline.environment(store, dict(os.environ, MNG_DEPS_CACHE=str(tmp / 'cache')))
@@ -360,7 +384,11 @@ def main(argv):
     ap.add_argument('--python', default=sys.executable, help='a Python 3.14 with pip (default: this one)')
     a = ap.parse_args(argv)
     try:
-        (build if a.action == 'build' else check)(a.store.expanduser().resolve(), a.python)
+        store = a.store.expanduser().resolve()
+        if a.action == 'check' and os.environ.get(INSIDE) != '1':
+            command = [sys.executable, '-B', '-m', 'tools.deps.offline_pack', 'check', store, '--python', a.python]
+            return subprocess.call(without_network(command), env=dict(os.environ, **{INSIDE: '1'}), cwd=REPO)
+        (build if a.action == 'build' else check)(store, a.python)
     except (RuntimeError, OSError, KeyError, ValueError, subprocess.TimeoutExpired) as e:
         print(f'[offline] FAILED: {e}', file=sys.stderr)
         return 1
