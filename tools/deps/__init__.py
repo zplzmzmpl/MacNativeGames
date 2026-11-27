@@ -16,6 +16,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from ..macho_minos import LIMIT as MACOS_MIN
 from .core import DepsError, cache, fetch, git_fetch, install, jobs, locked, run, say, unpack
 from .offline import activate as _offline
 from .pins import BUILD_TOOLS, SOURCES
@@ -43,6 +44,7 @@ LIBRARIES = {'opus': 'OPUS_PREFIX', 'libvpx': 'VPX_PREFIX', 'dav1d': 'DAV1D_PREF
 PROGRAMS = {'zstd': ('zstd', 'bin/zstd'), 'spirv-cross': ('spirv-cross', 'bin/spirv-cross'),
             'glslangValidator': ('glslang', 'bin/glslangValidator'), 'xcodegen': ('xcodegen', 'bin/xcodegen'),
             'dotnet': ('dotnet', 'dotnet')}
+MACOS_BUILD_DEPS = ('opus', 'libvpx', 'dav1d', 'ogg', 'vorbis', 'zstd', 'spirv-cross')
 # glslang is built with cmake and ninja; the set with meson too is the one iPhone / iPad builds already make.
 CMAKE_SET = ('cmake', 'meson', 'ninja')
 
@@ -88,27 +90,50 @@ def python_environment(name):
 
 
 def prefix(name):
-    """The installed folder of a pinned dependency (SOURCES), made from its source the first time."""
+    """The installed pinned dependency, using the Launcher copy when the store carries it."""
     if name not in SOURCES:
         raise DepsError(f'unknown dependency {name!r}: one of {", ".join(sorted(SOURCES))}')
-    folder = cache() / _folder(name)
-    if (folder / MARKER[name]).exists():
+    from .offline import built, tree_files
+    key = _folder(name)
+    try:
+        carried = built(key)
+    except ValueError as error:
+        raise DepsError(str(error)) from None
+    folder = cache() / key
+    if carried is None and name in MACOS_BUILD_DEPS:
+        # Older prefixes may require a newer OS or contain a libvpx built without NEON.
+        folder = folder.with_name(f'{key}-macos{MACOS_MIN}')
+    carried_files = tree_files(carried) if carried is not None else None
+
+    def is_ready():
+        return (folder / MARKER[name]).is_file() and (carried_files is None or tree_files(folder) == carried_files)
+
+    if carried is None and is_ready():
         return folder
     with locked():
-        if not (folder / MARKER[name]).exists():
-            from .offline import built
-            try:   # a released Launcher's copy, made at the release (user 2026-11-22: "做")
-                carried = built(_folder(name))
-            except ValueError as e:
-                raise DepsError(str(e)) from None
+        if not is_ready():
             if carried is not None:
                 say(f'{name} {SOURCES[name][0]}: the copy the Launcher carries, made at its release')
                 install(folder, lambda stage: shutil.copytree(carried, stage, symlinks=True))
             else:
                 version = SOURCES[name][0]
                 say(f'making {name} {version} from its pinned source, once for this Mac (log: {cache() / "logs"})')
-                install(folder, lambda stage: RECIPES[name](stage))
+                install(folder, lambda stage: _make(name, stage))
     return folder
+
+
+def _make(name, stage):
+    if name not in MACOS_BUILD_DEPS:
+        return RECIPES[name](stage)
+    before = os.environ.get('MACOSX_DEPLOYMENT_TARGET')
+    os.environ['MACOSX_DEPLOYMENT_TARGET'] = MACOS_MIN
+    try:
+        return RECIPES[name](stage)
+    finally:
+        if before is None:
+            os.environ.pop('MACOSX_DEPLOYMENT_TARGET', None)
+        else:
+            os.environ['MACOSX_DEPLOYMENT_TARGET'] = before
 
 
 def program(name):
@@ -223,8 +248,10 @@ def _libvpx(stage):
     if build.exists():
         shutil.rmtree(build)
     build.mkdir(parents=True)
-    run([src / 'configure', '--disable-dependency-tracking', '--disable-examples', '--disable-tools', '--disable-docs',
-         '--disable-unit-tests', '--enable-pic', '--disable-shared', '--enable-static', '--enable-vp9-highbitdepth',
+    # libvpx 1.16 does not recognize newer Darwin releases and auto-detection falls back to generic C.
+    run([src / 'configure', '--target=arm64-darwin25-gcc', '--disable-dependency-tracking', '--disable-examples',
+         '--disable-tools', '--disable-docs', '--disable-unit-tests', '--enable-pic', '--disable-shared',
+         '--enable-static', '--enable-vp9-highbitdepth',
          f'--prefix={stage}'], 'libvpx-configure.log', cwd=build)
     run(['make', f'-j{jobs()}', 'install'], 'libvpx-make.log', cwd=build)
 

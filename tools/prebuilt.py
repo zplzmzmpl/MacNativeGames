@@ -182,12 +182,17 @@ def build(source):
     sys.path.insert(0, str(source))
     os.environ['MNG_REPO'] = str(source)
     import build_app   # this source's own build code
+    from tools import macho_minos
     out = source / FOLDER
     shutil.rmtree(out, ignore_errors=True)
     out.mkdir()
     logs = Path(tempfile.mkdtemp(prefix='mng-prebuilt-logs-'))
     jobs = str(os.cpu_count() or 4)
     build_app.codec_libraries('macos')
+    libraries = [Path(os.environ[prefix]) / 'lib' / name for prefix, name in (
+        ('OPUS_PREFIX', 'libopus.a'), ('VPX_PREFIX', 'libvpx.a'), ('DAV1D_PREFIX', 'libdav1d.a'),
+    )]
+    macho_minos.require_supported(libraries)
     env = dict(os.environ)
     with tempfile.TemporaryDirectory(prefix='mng-runtime-ent-') as entdir:
         ent = Path(entdir) / 'runtime.entitlements'
@@ -204,7 +209,8 @@ def build(source):
             if name in RUNTIME_NAMES:
                 sign_runtime(name)
         shutil.rmtree(oot_work, ignore_errors=True)
-    files ={n: {'sha256': _sha256(out / n), 'bytes': (out / n).stat().st_size} for n in NAMES}
+    macho_minos.require_supported([out / name for name in NAMES])
+    files = {n: {'sha256': _sha256(out / n), 'bytes': (out / n).stat().st_size} for n in NAMES}
     (out / 'manifest.json').write_text(json.dumps({'schema': SCHEMA, 'commit': commit, 'files': files}, indent=1) + '\n')
     print(f'{len(files)} prebuilt programs for {commit[:12]} in {out}', flush=True)
     return out
@@ -212,6 +218,9 @@ def build(source):
 
 if __name__ == '__main__':
     if len(sys.argv) == 3 and sys.argv[1] == 'build':
-        build(sys.argv[2])
+        try:
+            build(sys.argv[2])
+        except ValueError as error:
+            raise SystemExit(str(error)) from None
     else:
         raise SystemExit(__doc__)

@@ -337,6 +337,15 @@ class BuiltDependencies(unittest.TestCase):
         with self.assertRaisesRegex(deps.DepsError, 'damaged'):
             deps.prefix('zstd')
 
+    def test_an_older_cache_copy_is_replaced_by_the_carried_copy(self):
+        import tools.deps as deps
+        cached = self.tmp / 'cache' / self.name / 'bin/zstd'
+        cached.parent.mkdir(parents=True)
+        cached.write_bytes(b'older build in the cache')
+        with mock.patch.dict(deps.RECIPES, {'zstd': mock.Mock(side_effect=AssertionError('compiled'))}):
+            self.assertEqual(deps.prefix('zstd'), cached.parent.parent)
+        self.assertEqual(cached.read_bytes(), b'made at the release')
+
     def test_every_carried_source_is_carried_made_and_not_as_source(self):
         from tools.deps import pins
         names = offline_pack.built_names()

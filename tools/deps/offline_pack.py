@@ -35,6 +35,7 @@ sys.path.insert(0, str(REPO))
 from tools.deps import BUILD_TOOLS, SOURCES, offline  # noqa: E402
 from tools.deps.core import digest, fetch  # noqa: E402
 from tools.deps.pins import FONTTOOLS, OPEN_FONTS, OPEN_FONTS_LICENSE, PACKAGES  # noqa: E402
+from tools import macho_minos  # noqa: E402
 
 # Ocarina of Time’s Python dependencies.
 REQUIREMENTS = ('games/oot',)
@@ -220,7 +221,7 @@ def licences(name):
     return [p for r in roots for p in sorted(r.iterdir()) if p.is_file() and p.name.upper().startswith(LICENCE_FILES)]
 
 
-RECIPES = ('tools/deps/__init__.py', 'tools/deps/core.py', 'tools/deps/pins.py')   # what says how each is made
+RECIPES = ('tools/deps/__init__.py', 'tools/deps/core.py', 'tools/deps/pins.py', 'tools/macho_minos.py')
 
 
 def recipe_digest():
@@ -233,6 +234,14 @@ def digest_of_files(paths):
     for path in paths:
         h.update(path.name.encode() + b'\0' + path.read_bytes() + b'\0')
     return h.hexdigest()
+
+
+def verify_built_macos(folder):
+    macho_minos.require_supported([folder])
+    for archive in folder.glob('libvpx-*/lib/libvpx.a'):
+        members = [name for name, _ in macho_minos.scan(archive)]
+        if not (any('aarch64_cpudetect' in name for name in members) and any('_neon' in name for name in members)):
+            raise RuntimeError(f'{archive}: libvpx is missing its arm64 NEON implementation')
 
 
 def build_built(store, old):
@@ -248,6 +257,7 @@ def build_built(store, old):
     kept = old.get('built') or {}
     if old.get('built_recipes') == recipes and set(kept) == set(wanted) and all(
             (folder / f).is_dir() and offline.tree_files(folder / f) == files for f, files in kept.items()):
+        verify_built_macos(folder)
         say(f'built {", ".join(sorted(kept))}: kept (same recipes {recipes[:12]})')
         return kept, recipes
     out = {}
@@ -277,6 +287,7 @@ def build_built(store, old):
     for stale in folder.iterdir():
         if stale.name not in out:
             shutil.rmtree(stale)
+    verify_built_macos(folder)
     return out, recipes
 
 
@@ -309,6 +320,7 @@ def check(store, python):
     if not network_denied():
         raise RuntimeError('the offline check needs external connections to be blocked. Run '
                            '`python3 -m tools.deps.offline_pack check <store>` to apply the network sandbox.')
+    verify_built_macos(store / 'built')
     with tempfile.TemporaryDirectory() as t:
         tmp = Path(t)
         env = offline.environment(store, dict(os.environ, MNG_DEPS_CACHE=str(tmp / 'cache')))
