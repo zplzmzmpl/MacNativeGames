@@ -8,7 +8,6 @@
    glyphs get combined with the failed face's layout metrics (#1398 / PR #2145). */
 #include "runtime.h"
 #include "game_data.h"
-#include "../zeldaVR/gfx/vr_labo.h"
 #include <CommonCrypto/CommonDigest.h>
 #include <pthread.h>
 #include <stdio.h>
@@ -57,14 +56,14 @@ static const void *address(int type){return region+offsets[valid(type)];}
 static size_t size(int type){return (size_t)rows[valid(type)].font_bytes;}
 #ifdef GAME_BOTW
 /* SDK 7 (Breath of the Wild 1.6.0, botw.md): it asks for each font to be loaded before reading it; the fonts are loaded at
-   startup. Labo's display mode is supplied by the optional Mac VR integration. */
+   startup. */
 static void request_load(int type){(void)type;}
 static unsigned char vr_mode(void){return 0;}
 static void vr_mode_change(void){} /* Game Labo cannot control our renderer. */
 /* The options' VR mode first asks nn::pctl::CheckStereoVisionPermission(false) (1.6.0 main+0xf8bb4c, +0x11a109c). The
    SDK's own one calls into a parental-control session the host never opened and crashed. It is a bool, true = permitted
-   (as in games/ssbu). The game option is always unavailable, including our VR
-   and explicit research sessions. Our stereo renderer has a separate entry. */
+   (as in games/ssbu). Keep the unsupported mode unavailable. */
+static unsigned char stereo_vision_permitted(unsigned char show_error){(void)show_error;return 0;}
 /* 1.9.0 asks whether it runs on a Switch 2 ("Ounce"): no, it gets the original Switch's paths. */
 static unsigned char running_on_ounce(void){return 0;}
 #endif
@@ -76,7 +75,7 @@ void *runtime_font_override(const char *name){
 #ifdef GAME_BOTW
   ,{"_ZN2nn2pl21RequestSharedFontLoadENS0_14SharedFontTypeE",request_load},{"_ZN2nn2pl8IsVrModeEv",vr_mode},
   {"_ZN2nn2pl11BeginVrModeEv",vr_mode_change},{"_ZN2nn2pl9EndVrModeEv",vr_mode_change},
-  {"_ZN2nn4pctl27CheckStereoVisionPermissionEb",vr_labo_option_permitted},
+  {"_ZN2nn4pctl27CheckStereoVisionPermissionEb",stereo_vision_permitted},
   {"_ZN2nn2pl16IsRunningOnOunceEv",running_on_ounce}
 #endif
   };

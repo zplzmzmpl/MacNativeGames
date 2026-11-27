@@ -53,20 +53,4 @@ static inline int gamepad_game_mouse_points(void) {
 #endif
 }
 
-/* ---- zeldaVR: set by gfx/nvn/totk_vr.m while VR runs ---- */
-#define GAMEPAD_GAME_VR 1
-void (*runtime_vr_recenter)(void);   /* the L3 + R3 tap recentres the headset (straight ahead and the 6DoF origin) */
-int (*runtime_vr_pad)(int plain, uint64_t *buttons, int32_t *lx, int32_t *ly, int32_t *rx, int32_t *ry);   /* the VR thread's controllers */
-static inline void (*gamepad_game_chord_tap(void))(void) { return __atomic_load_n(&runtime_vr_recenter, __ATOMIC_ACQUIRE); }
-/* The Quest 3 controllers (gfx/nvn/totk_vr.m vr_gamepad), merged like the touch screen; plain: by name, for the panel. */
-static inline void gamepad_game_merge(RuntimeGamepadState *out, int plain) {
-    uint64_t vb; int32_t vlx, vly, vrx, vry;
-    int (*pad)(int, uint64_t *, int32_t *, int32_t *, int32_t *, int32_t *) = __atomic_load_n(&runtime_vr_pad, __ATOMIC_ACQUIRE);
-    if (!pad || !pad(plain, &vb, &vlx, &vly, &vrx, &vry)) return;
-    out->buttons |= vb; out->connected = 1;
-    if (abs(vlx) > abs(out->lx)) out->lx = vlx;
-    if (abs(vly) > abs(out->ly)) out->ly = vly;
-    if (abs(vrx) > abs(out->rx)) out->rx = vrx;
-    if (abs(vry) > abs(out->ry)) out->ry = vry;
-}
 #endif

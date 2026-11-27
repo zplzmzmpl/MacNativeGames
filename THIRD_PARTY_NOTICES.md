@@ -33,7 +33,6 @@ Code in this repository that comes from other projects keeps its license; the li
 | Switch 2 SDK 20 host services in `games/totk/runtime/ns2_host.c`, `ns2_audio_out.c` and `ns2_codec.c` (behaviour ported) | nxnative, the commits each file names | MIT | `games/totk/third_party/licenses/nxnative.txt` |
 | Source-specific Metal bracket depth in `build_app.py` and `games/totk/scripts/build_shader_libs.py`; synthetic nested-walk test in `tests/test_metal_bracket_depth.py` | [nxnative commit `56b73f21`](https://github.com/stan69b/nxnative/commit/56b73f21) (seedds, `oot-clean`), adapted | MIT | `games/totk/third_party/licenses/nxnative.txt` |
 | audio effects in `games/totk/runtime/audio_reverb.c`, `games/totk/runtime/audio_effects.c` (delay, reverb, compressor) and the mixer | ported from Ryujinx.Audio | MIT | `games/totk/third_party/licenses/Ryujinx-Audio.txt` |
-| `zeldaVR/streamer/basaltvr.patch` (our changes to the streamer, with lines of its source as diff context) | [BasaltVR](https://github.com/frenchbaguetteman/BasaltVR) at `4c46172` | MIT | `zeldaVR/streamer/LICENSE.BasaltVR` |
 | Scene HDR math and grading in `games/totk/third_party/d2r_gfx/gfx/nvn/totk_hdr_compose.h` | [RenoDX TOTK](https://github.com/Souperman9/renodx/tree/40d764d88719ab06c8e46139b5454e7dafc8cbcc/src/games/totk) | MIT | `games/totk/third_party/d2r_gfx/gfx/nvn/LICENSE.renodx` |
 
 Fetched or linked at build time (not in this repository):

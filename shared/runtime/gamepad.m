@@ -1,7 +1,7 @@
 /* Native macOS controllers feed the same FullKey state as the keyboard: one player, every controller, generic HID pad,
    DSU pad, the mouse's buttons and the iPhone's touch controls together (shared/README.md). The plumbing is in
    runtime/gamepad_core.h; what one game adds is in its runtime/gamepad_game.h (Tears of the Kingdom's live button prompts,
-   ability wheel and zeldaVR; Ocarina of Time's input trace; which games have mouse mode). Linked by games/totk (also Breath
+   ability wheel; Ocarina of Time's input trace; which games have mouse mode). Linked by games/totk (also Breath
    of the Wild, Donkey Kong Bananza and Pokopia), games/oot, games/acnh and games/eow; games/odyssey keeps its own, with two
    seats for Mario and Cappy. */
 #import <Foundation/Foundation.h>
@@ -154,19 +154,7 @@ static void refresh_gamepads(void) {
     next.buttons |= controller_map_apply(controllerMap, held) | synthetic;
     pthread_mutex_lock(&gamepadLock);
     int chord = settingsShortcutEnabled && (physical & trigger) == trigger;
-    void (*tap)(void) = gamepad_game_chord_tap();
-    if (tap) {
-        /* The game gives the chord a tap of its own (zeldaVR running: "同时 按下 l3 r3 就自动 “对准正前方”", user
-           2026-10-30): tapped it does that, held 0.8 s it opens the settings. The game gets nothing from the press either way. */
-        static uint64_t chordAt; static int chordLong;
-        if (chord && !settingsShortcutDown) {
-            chordAt = now; chordLong = 0;
-            if (!textCapture) textCapture = 2;
-            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(850 * NSEC_PER_MSEC)), dispatch_get_main_queue(), ^{ refresh_gamepads(); });
-        }
-        if (chord && !chordLong && now - chordAt >= 800000000ULL) { chordLong = 1; settingsShortcutPending = 1; }
-        if (!chord && settingsShortcutDown && !chordLong) tap();
-    } else if (chord && !settingsShortcutDown) {
+    if (chord && !settingsShortcutDown) {
         settingsShortcutPending = 1;
         if (!textCapture) textCapture = 2;   /* from here the game no longer gets the controller, until it is released */
     }
@@ -280,7 +268,6 @@ static RuntimeGamepadState text_state_locked(void) {
 void runtime_gamepad_text_read(RuntimeGamepadState *out) {
     pthread_mutex_lock(&gamepadLock);
     *out = text_state_locked(); out->buttons |= textEdges; textEdges = 0;
-    gamepad_game_merge(out, 1);   /* the settings panel and the text keyboard: the game's other pads by name (zeldaVR's Quest) */
     pthread_mutex_unlock(&gamepadLock);
 }
 void runtime_gamepad_read(RuntimeGamepadState *out) {
@@ -297,7 +284,6 @@ void runtime_gamepad_read(RuntimeGamepadState *out) {
     out->rx = stronger_axis(out->rx, touchState.rx); out->ry = stronger_axis(out->ry, touchState.ry);
     mouse_stick_merge_locked(out);
     if (touchState.connected) out->connected = 1;
-    gamepad_game_merge(out, 0);   /* the game's other pads, merged like the touch screen (zeldaVR's Quest 3 controllers) */
     pressedEdges = 0;
     if (textCapture) {
         RuntimeGamepadState held = text_state_locked();

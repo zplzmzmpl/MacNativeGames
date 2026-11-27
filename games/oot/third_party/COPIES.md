@@ -2,7 +2,6 @@
 
 The initial native host, NVN2/Metal 4 backend, static ARM64 rewriter, shader translator and scripts are isolated copies of this repository's games/totk at 5843ee56f3ab6911e32d61d46e96fee4ce8137de, MIT. They include the already supported Bananza and Pokopia platform implementation. No build step reads another game's folder. Original third-party licenses remain beside their sources.
 
-The disabled VR linkage sources are copied from zeldaVR/gfx and zeldaVR/runtime at the same commit; VR is not enabled for this title.
 
 External nxnative and Lichii reports are references for missing SDK/NVN semantics, not replacement runtimes. Every adapted implementation is identified in its source.
 
@@ -39,7 +38,7 @@ Input stack (2026-11-18): `runtime/gamepad.m`, `gamepad_feedback.m`, `controller
 off) are symlinks into the repository's `shared/` folder (shared/README.md). The copies were games/totk's but for this
 game's start of GameController off the main thread (a wedged gamecontrollerd no longer hangs the start), now in the
 shared core for every game. This game's own: `runtime/gamepad_game.h` (mouse mode, the pointing while L is held that the
-copy had, zeldaVR's linkage, and the input trace `OOT_INPUT_TRACE`), `runtime/feedback_game.h` (no bow triggers: the
+copy had and the input trace `OOT_INPUT_TRACE`), `runtime/feedback_game.h` (no bow triggers: the
 settings row says "Not in this version", as before), and in `runtime/input.c` the key table, the HID answers, the
 `settings`, `ashot`, `ashotn` and stereo B2 commands and its flags (`input_trace`, the resolution rows, `fps_lock`).
 

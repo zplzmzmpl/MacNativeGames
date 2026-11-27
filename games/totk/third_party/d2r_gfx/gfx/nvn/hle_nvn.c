@@ -1705,32 +1705,14 @@ NVN(nvnCommandBufferReportCounter, void, NVNcommandBuffer *c, NVNcounterType t, 
     if (cmdlog_on()) LOG("[cmd] F%llu ReportCounter type=%d addr=%#llx", (unsigned long long)g_frame_pub, (int)t, (unsigned long long)a);
     uint8_t *p = cmd_alloc(CB(c), 24); put_hdr(p, OP_REPORT_COUNTER, 24); uint64_t tt = t; memcpy(p + 8, &tt, 8); memcpy(p + 16, &a, 8);
 }
-static void vr_ublog(const char *kind, uint64_t dst, size_t n, uint64_t src, const void *data);
 NVN(nvnCommandBufferCopyBufferToBuffer, void, NVNcommandBuffer *c, NVNbufferAddress src, NVNbufferAddress dst, size_t n, int flags) {
-    vr_ublog("copy", dst, n, src, NULL);
     (void)flags;
     uint8_t *p = cmd_alloc(CB(c), 32); put_hdr(p, OP_COPY_B2B, 32); uint64_t nn = n;
     memcpy(p + 8, &src, 8); memcpy(p + 16, &dst, 8); memcpy(p + 24, &nn, 8);
 }
 // uniform 更新：数据在录制时拷进命令内存（NVN 语义：录制后调用方可改原数据），提交时写进缓冲
 // uniform update: the data is copied into command memory at record time (NVN semantics: the caller may modify the original data after recording) and written into the buffer at submit
-/* TOTK_VR_UBLOG=1 (diagnostic for VR stage 2, off by default): GPU-side writes into the main camera blocks (addresses
-   published by the replay's camera scan, nvn_mtl.m vr_camscan: g_vr_cam_blocks): uniform updates and buffer-to-buffer
-   copies whose destination overlaps one, with the game's call chain and the source, at most 40 lines. The CPU never
-   stores into the block itself (a write watchpoint on it stays silent while its content changes every frame). */
-uint64_t g_vr_cam_blocks[8];   // written by the replay thread, read here: a stale read only misses a line
-static void vr_ublog(const char *kind, uint64_t dst, size_t n, uint64_t src, const void *data) {
-    static int on = -1, lines; if (on < 0) on = getenv("TOTK_VR_UBLOG") != NULL;
-    if (!on || lines >= 40) return;
-    int hit = -1; for (int i = 0; i < 8 && hit < 0; i++) { uint64_t b = g_vr_cam_blocks[i]; if (b && dst < b + 2368 && dst + n > b) hit = i; }
-    if (hit < 0) return;
-    char what[256]; snprintf(what, sizeof what, "[vr] camera write F%llu %s dst %#llx (block %#llx %+lld) n %zu src %#llx data %p",
-                             (unsigned long long)g_frame_pub, kind, (unsigned long long)dst, (unsigned long long)g_vr_cam_blocks[hit],
-                             (long long)(dst - g_vr_cam_blocks[hit]), n, (unsigned long long)src, data);
-    guest_chain(what); lines++;
-}
 NVN(nvnCommandBufferUpdateUniformBuffer, void, NVNcommandBuffer *c, NVNbufferAddress buf, size_t bufsz, ptrdiff_t off, size_t n, const void *data) {
-    vr_ublog("update", buf + off, n, 0, data);
     (void)bufsz;
     uint32_t sz = (uint32_t)(24 + n);
     uint8_t *p = cmd_alloc(CB(c), sz); put_hdr(p, OP_UPDATE_UB, (sz + 7) & ~7u);
@@ -2906,30 +2888,15 @@ static void submit_exec(int n, const uint64_t *h, void *ucap) {
     /* TOTK diagnostic (TOTK_WATCH_ADDR): submissions in progress, and their start / end times, to line up guest writes with replay */
     atomic_fetch_add(&dm_submit_busy, 1);
     { static int wl = -1; if (wl < 0) wl = getenv("TOTK_WATCH_ADDR") != NULL; if (wl) LOG("[sub] F%llu start t_us=%llu", (unsigned long long)g_frame_pub, (unsigned long long)(clock_gettime_nsec_np(CLOCK_UPTIME_RAW) / 1000)); }
-    /* Stereo by replay (nvn_mtl.m g_eye_pass, vr开发.md section 23): the same recordings and the same uniform bytes once
-       per eye, the left eye first. */
-    extern int mtl_stereo_replay(void); extern void mtl_eye_pass(int e); extern void *mtl_ucap_dup(const void *base); extern void *mtl_sub_capture_ubos(const uint64_t *h, int n);
-    extern int mtl_ucap_eye(void *cap, int eye); extern int mtl_stereo_project(void); extern void mtl_ucap_free(void *c); extern void mtl_eye_capture(int eye);
-    int stereo = mtl_stereo_replay(); const int project = stereo && mtl_stereo_project();
-    /* each replay consumes a capture: with two replays the submission's own (taken now when the replay runs inside the
-       submit call) goes to the second and a copy of it to the first */
-    void *base = stereo ? (ucap ? ucap : mtl_sub_capture_ubos((const uint64_t *)h, n)) : ucap, *first = stereo ? mtl_ucap_dup(base) : NULL;
-    /* a submission without the world camera's block (menus, the title, loading, a frame's other submissions) has no eyes
-       to make: it is replayed once, as without stereo */
-    if (project && mtl_ucap_eye(first, 0) <= 0) { mtl_ucap_free(first); first = NULL; stereo = 0; }
-    for (int pass = 0; pass < (stereo ? 2 : 1); pass++) {
-        if (stereo) mtl_eye_pass(pass + 1);
-        void *cap = stereo && pass == 0 ? first : base;
-        if (stereo && project && pass == 1) (void)mtl_ucap_eye(cap, 1);   // the right eye's projection into the second replay's uniforms
-        mtl_sub_begin();
-        mtl_sub_snapshot_ubos_cap((const uint64_t *)h, n, cap);   // TOTK: uniforms as of the submit call (cap: bytes captured there)
-        mtl_sub_index((const uint64_t *)h, n);
-        for (int i = 0; i < n; i++) { mtl_exec_rest((const uint64_t *)h + i + 1, n - i - 1); mtl_exec((const uint8_t *)h[i]); }
-        mtl_exec_rest(NULL, 0);
-        if (stereo && project) mtl_eye_capture(pass);   // this eye's picture, before the commit
-        mtl_sub_commit();
+    mtl_sub_begin();
+    mtl_sub_snapshot_ubos_cap(h, n, ucap);
+    mtl_sub_index(h, n);
+    for (int i = 0; i < n; i++) {
+        mtl_exec_rest(h + i + 1, n - i - 1);
+        mtl_exec((const uint8_t *)h[i]);
     }
-    if (stereo) mtl_eye_pass(0);
+    mtl_exec_rest(NULL, 0);
+    mtl_sub_commit();
     atomic_fetch_sub(&dm_submit_busy, 1);
     { static int wl = -1; if (wl < 0) wl = getenv("TOTK_WATCH_ADDR") != NULL; if (wl) LOG("[sub] F%llu end t_us=%llu", (unsigned long long)g_frame_pub, (unsigned long long)(clock_gettime_nsec_np(CLOCK_UPTIME_RAW) / 1000)); }
     uint64_t dw = now_ns() - t0;

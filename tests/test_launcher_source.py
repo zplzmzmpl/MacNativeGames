@@ -54,6 +54,12 @@ class LauncherSource(unittest.TestCase):
             self.assertNotIn(name.split('/')[1] if name.startswith('games/') else None, self.left_out, name)
         self.assertEqual(launcher_source.game_folders(), ['oot', 'totk'])
 
+    def test_launcher_omits_headset_sources(self):
+        for name in self.files:
+            self.assertNotIn('zeldaVR', Path(name).parts, name)
+            self.assertNotIn(Path(name).name, {'make_vr_rig.py', 'botw_stereo.h'}, name)
+            self.assertFalse(re.match(r'(oot|botw|totk)_vr_', Path(name).name), name)
+
     def test_oot_shader_packaging_from_carried_source(self):
         # Use only files selected by the release pathspecs, in a fresh Python process.
         sources = {'games/oot/build.py', 'games/oot/scripts/romfs_pin.py', 'games/oot/scripts/seed_image.py',

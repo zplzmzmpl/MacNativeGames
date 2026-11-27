@@ -82,32 +82,6 @@ class OnePanel(unittest.TestCase):
 
 @unittest.skipUnless(sys.platform == 'darwin', 'AppKit requires macOS')
 class SettingsPanel(unittest.TestCase):
-    def test_vr_rows_use_supported_game_features(self):
-        compiler = shutil.which('clang')
-        if not compiler:
-            self.skipTest('clang is required')
-        gfx = ROOT / 'games/totk/third_party/d2r_gfx/gfx/nvn'
-        with tempfile.TemporaryDirectory() as directory:
-            for version in ('TOTK_GAME_V143', 'GAME_BOTW160', 'GAME_BOTW190'):
-                executable = Path(directory) / version
-                command = [compiler, '-std=c11', '-fobjc-arc', '-Wall', '-Wextra', '-Werror',
-                           '-Wno-deprecated-declarations', '-I' + str(gfx / 'include'),
-                           '-Wl,-undefined,dynamic_lookup', '-Wl,-dead_strip',
-                           str(ROOT / 'tests/settings_panel_probe.m'),
-                           str(ROOT / 'games/totk/runtime/input_prompts.m'),
-                           '-framework', 'CoreText', '-framework', 'CoreGraphics', str(ROOT / 'tests/settings_output_fixture.c'),
-                           *[str(gfx / f) for f in ('totk_mfx.m', 'totk_mfx_up.m', 'totk_taa.m', 'fps_overlay.c')],
-                           '-framework', 'Cocoa', '-framework', 'Metal', '-framework', 'MetalFX',
-                           '-framework', 'QuartzCore', '-framework', 'CoreVideo', '-o', str(executable),
-                           '-D' + version + '=1']
-                if version.startswith('GAME_BOTW'):
-                    command.append('-DGAME_BOTW=1')
-                result = subprocess.run(command, capture_output=True, text=True, timeout=90)
-                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-                result = subprocess.run([str(executable), 'vr-rows'], capture_output=True, text=True, timeout=10)
-                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-                self.assertIn('pass: supported VR settings rows', result.stdout)
-
     @unittest.skipUnless(HAS_INBOX, 'needs node and the shader inbox (SHADER_INBOX_DIR) with npm install')
     def test_screenshots_page_with_pictures(self):
         """The 截图分享 page against the inbox's test/local-server.js: pictures shared, listed, shown, deleted.

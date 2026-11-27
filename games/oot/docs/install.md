@@ -99,7 +99,7 @@ Read the `ERROR:` line and the log file in `<work folder>/logs/`, fix the cause,
 | `the work folder … is on …, a volume that is not mounted` | Mount the volume and try again, or add `--work "<a folder of your choice>"` ([Folders](../../../docs/install.md#folders)). On a mounted volume, the update recreates a missing work directory and its parents. |
 | `… must remain outside the source checkout` | Put `--work` and `-o` outside the `MacNativeGames` folder. |
 | `unfinished App staging directory exists; left untouched` | A build stopped while writing the app: delete the `.Ocarina of Time.app.ready` folder next to the app, then build again. |
-| `this title currently uses its original rendering options` | Leave out `--native-4k`, `--native-5k` and `--vr`. |
+| `this title currently uses its original rendering options` | Leave out `--native-4k` and `--native-5k`. |
 | `game did not finish its normal close; App left untouched` | Quit the game, then build again. |
 
 Still stuck? Open an [issue](https://github.com/ly05010419/MacNativeGames/issues) with the command (paths shortened), Mac model, macOS version, `git log -1 --oneline`, the `ERROR:` line and the end of the log it names. Never attach game files, fonts or the app.

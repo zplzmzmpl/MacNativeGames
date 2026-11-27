@@ -53,7 +53,7 @@ jobs:
           fi
 
           watched=(
-            games/oot zeldaVR shared
+            games/oot shared
             games/totk/third_party/d2r_gfx
             build_app.py update_runtime.py shader_update.py
             tools/deps tools/builder tools/builder_jobs tools/prebuilt.py tools/launcher_source.py

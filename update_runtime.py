@@ -519,25 +519,6 @@ def game_data(tree, res, version, logs, env):
     return tree / f'build/game-data/{version}'
 
 
-def prepare_vr_render_overlay(tree, res, data, version, logs, env):
-    """Build the exact TotK eye-capacity heap from matching verified RomFS inputs."""
-    if version != 'v143':
-        raise BuildError('--vr updates currently require Tears of the Kingdom 1.4.3')
-    romfs = tree / 'extracted/v143/romfs'
-    try:
-        index = json.loads((romfs / 'index.json').read_text())
-        config_data = config(data / 'romfs-config.txt')
-        valid = (index.get('status') == 'pass' and index.get('romfs_sha256') == config_data['ROMFS_IMAGE_SHA256']
-                 and (romfs / 'romfs.bin').stat().st_size == int(config_data['ROMFS_IMAGE_SIZE']))
-    except (OSError, ValueError, KeyError):
-        valid = False
-    if not valid:
-        raise BuildError('--vr needs the matching verified RomFS index and image in the work folder; use the original build workspace')
-    run([env.get('PY', tree / '.venv/bin/python'), 'scripts/make_output_res_overlay.py', '4096x4416',   # Python 3.14 (#2099)
-         '--scene', '4096x4416', '--version', version], logs / 'vr-render-overlay.log', cwd=tree, env=env)
-    return tree / 'extracted/v143/romfs-patches-out/4096x4416-scene-4096x4416'
-
-
 def prepare_native_5k(tree, res, data, version, logs, preference):
     """Prepare a canvas upgrade from the matching cached game files, before touching the installed app.
     Existing 5K apps keep their capability on smaller Macs. A recorded or requested False takes priority."""

@@ -369,7 +369,7 @@ GAME_FILE_SUFFIXES = ('.keys', '.nsp', '.nsz', '.xci', '.xcz', '.nca', '.ncz', '
 # The build's own output in the work folder copy, which the source sync (prepare_work, rsync --delete) must leave alone:
 # ios/Gen and the generated Xcode project are the iOS build's (ios/tools/build_ipa.py: its shader seed, the compiled
 # library cache and the deps; 2026-11-13: deleted at every sync, so every iOS build compiled all its libraries again).
-WORK_COPY_SKIP = ('extracted', 'rewritten', 'build', 'analysis', '.venv', 'tooling', 'user-data', 'zeldaVR',
+WORK_COPY_SKIP = ('extracted', 'rewritten', 'build', 'analysis', '.venv', 'tooling', 'user-data',
                   'ios/Gen', 'ios/project.generated.yml', 'ios/TOTKIOS.xcodeproj')
 
 
@@ -445,9 +445,6 @@ def prepare_work(work, py, logs):
     # update from main stopped on a branch's nvn_pool_sources.m). The excluded folders (WORK_COPY_SKIP: the build's own
     # output) and game files are never deleted: rsync leaves excluded paths alone.
     sync_folder(GAME, tree, excludes, logs / 'sources.log')
-    # zeldaVR's modules (games/totk/zeldaVR links to them in the repository): into the tree, where the Makefile and the
-    # iOS project take them; VR stays off unless TOTK_VR_CONTROL is set
-    sync_folder(REPO / 'zeldaVR', tree / 'zeldaVR', excludes, logs / 'sources-zeldavr.log')
     # games/botw: its scripts find the shared ones at ../totk/scripts (work/botw next to work/totk)
     sync_folder(BOTW, work / 'botw', excludes, logs / 'sources-botw.log')
     for g in NS2.values():   # the Switch 2 games' expected values and shared lists (games/totk/Makefile: ../pokopia/assets/...)
@@ -899,7 +896,6 @@ OVERLAY_RECORD = 'overlay.json'
 # for the largest one present and starts at 1080p. Not 4K yet: its heaps need one memory pool above the graphics layer's
 # 1 GiB zero-copy limit (games/totk/runtime/game_patches_v143.c, 2026-10-25: the game stopped at the start).
 OUTPUT_SIZES = ('2560x1440',)
-VR_BIG_SIZES = ('3056x2720', '4576x4080', '4096x4416')   # zeldaVR (--vr): VR native 4K / 4K + MetalFX / native 6K (runtime/game_patches_v143.c vr_big_mode)
 
 
 def overlay_record(path):
@@ -1135,8 +1131,10 @@ def remove_large_output_overlays(tree, version):
     """The 4K and 5K canvas overlays (with or without a scene size) left by an earlier build are removed before each
     build: without either option the runtime keeps 2560x1440 as its largest output size (its swapchain and heaps;
     runtime/game_patches_v143.c), with the options the build makes the current set again."""
+    # Discard cached overlays for the retired headset canvases when reusing a work folder.
+    large_sizes = ('3840x2160', '5120x2880', '3056x2720', '4576x4080', '4096x4416')
     for folder in (tree / f'extracted/{version}/romfs-patches-out').glob('*'):
-        if not folder.name.startswith(('3840x2160', '5120x2880', *VR_BIG_SIZES)):   # VR's: only a --vr build makes them
+        if not folder.name.startswith(large_sizes):
             continue
         if folder.is_dir():
             shutil.rmtree(folder)
@@ -1200,7 +1198,7 @@ def large_output_overlay_args(native_4k=False, native_5k=False):
     return steps
 
 
-def step_update_data(tree, game, update, keys, logs, *, version, mod=None, native_4k=False, native_5k=False, vr=False, app=None):
+def step_update_data(tree, game, update, keys, logs, *, version, mod=None, native_4k=False, native_5k=False, app=None):
     expected = VERSIONS[version]
     folder = tree/f'extracted/{version}/romfs'
     index = folder/'index.json'
@@ -1224,8 +1222,6 @@ def step_update_data(tree, game, update, keys, logs, *, version, mod=None, nativ
                   for canvas in ('1920x1080', *OUTPUT_SIZES) for scene in ('1920x1080', *OUTPUT_SIZES)]
     remove_large_output_overlays(tree, version)   # remove stale 4K/5K overlays even when a later build disables them
     steps += [('make_output_res_overlay.py', args) for args in large_output_overlay_args(native_4k, native_5k)]
-    if vr:   # zeldaVR (--vr): the headset-shaped canvases of VR native 4K / 4K + MetalFX / native 6K
-        steps += [('make_output_res_overlay.py', [size, '--scene', size]) for size in VR_BIG_SIZES]
     for i, (script, arguments) in enumerate(steps):
         if heapdef and script == 'make_output_res_overlay.py':   # every variant of the file keeps the mod's heap sizes
             arguments = [*arguments, '--heapdef', heapdef]
@@ -3364,7 +3360,6 @@ def parse_args(argv):
     ap.add_argument('--update', type=Path, help=argparse.SUPPRESS)
     ap.add_argument('--dlc', type=Path, action='append', help=argparse.SUPPRESS)
     ap.add_argument('--mod', type=Path, help=argparse.SUPPRESS)
-    ap.add_argument('--vr', action='store_true', help=argparse.SUPPRESS)
     ap.add_argument('--native-4k', action=argparse.BooleanOptionalAction, help=argparse.SUPPRESS)
     ap.add_argument('--native-5k', action=argparse.BooleanOptionalAction, help=argparse.SUPPRESS)
     return ap.parse_args(argv)

@@ -18,7 +18,6 @@
 #include "botw_fov.h"   /* 1.9.0's field of view (TOTK_FOV_SCALE, graphics-fov.txt) */
 #include "botw_heap_patch.h"   /* startup/root heap sizes above 4 GiB */
 #include "botw_output_heaps.h"
-#include "../zeldaVR/gfx/vr_resolution_policy.h"
 #include <TargetConditionals.h>
 #include <mach/mach.h>   /* vm_read_overwrite: TOTK_CDPOINT_TRACE reads guest pointers it cannot vouch for */
 uint32_t runtime_thread_current_handle(void);
@@ -52,10 +51,6 @@ static void put_words(Module *m, uint64_t off, const uint32_t *words, size_t n, 
     }
 }
 static void put_word(Module *m, uint64_t off, uint32_t word, const char *what) { put_words(m, off, &word, 1, what); }
-#include "botw_vr_camera.h"
-#include "botw_vr_projection.h"
-#include "botw_vr_ui_profile.h"
-#include "botw_stereo.h"
 
 /* Real-time frame step (TOTK_REALTIME=0: as shipped). ksys::VFR (singleton pointer main+0x2d1e170, built at main+0x183eb98)
    keeps one frame ratio at +0x3c: the frame's length in 30 fps frames. Every per-core step the game reads derives from it:
@@ -187,7 +182,6 @@ static void pad_tick_advance(void) {
     }
 }
 void runtime_frame_step_update(uint64_t now_ns) {
-    botw_stereo_tick(now_ns);
     botw_aspect_apply();   /* the aspect ratio */
     botw_output_tick();    /* key 3 */
     if (!frame_step_data || !now_ns) return;
@@ -631,7 +625,7 @@ static void patch_realtime(Module *m) {
             sizeof put / sizeof *put, sizeof check / sizeof *check);
     patch_pad_repeat(m, page);
     patch_blend_first_step(m, ((m->text_end + 15) & ~15ULL) + 80);   /* after the FOV stub (+32, 11 words) */
-    patch_kf_angle(m, ((m->text_end + 15) & ~15ULL) + 0x300);        /* past the VR and heap veneers (+0x80..+0x158) */
+    patch_kf_angle(m, ((m->text_end + 15) & ~15ULL) + 0x300);        /* past the heap veneers (+0x80..+0x158) */
 }
 #endif
 /* Diagnostics (TOTK_JQ_CHECK=1): random crashes look like one job run twice (two threads in the same skinning job, a list
@@ -1340,7 +1334,6 @@ static void patch_capture_res(Module *m) {
 static void patch_pchtxt(Module *m) { pchtxt_apply(m, "botw", g_pchtxt_reserved, sizeof g_pchtxt_reserved / sizeof *g_pchtxt_reserved); }
 void runtime_game_patches(Module *m) {
     fprintf(stderr, "[botw] %s game-code patches\n", TOTK_GAME_VERSION);
-    botw_stereo_install(m);
     runtime_survey_init(m);   /* TOTK_SURVEY=1: survey pos / move (world_survey.c) */
     patch_pchtxt(m);   /* first: on a Mac the patches below check the original words they replace (the phone's code is patched at build, CODE_PATCHED_AT_BUILD) */
     if (!patch_output_res(m)) patch_render_1080(m);
@@ -1354,9 +1347,6 @@ void runtime_game_patches(Module *m) {
     patch_font_size(m);
     patch_capture_res(m);   /* after patch_font_size: its stubs follow the typing-speed stub */
     botw_aspect_install(m);
-    botw_vr_camera_install(m);
-    botw_vr_projection_install(m);
-    botw_vr_ui_profile_install(m);
     if (realtime_enabled()) patch_realtime(m);
     else fprintf(stderr, "[botw] real-time frame step off (TOTK_REALTIME=0): the game advances by its present interval\n");
     { const char *a = getenv("TOTK_EXCL_ACQUIRE");
@@ -1793,11 +1783,6 @@ enum { OUT_STATIC = 0x1e43dc0, OUT_GFX = 0x1e43df0, OUT_MODE_REQ = 0x11bd, OUT_M
 #endif
 static int g_out_mode = -1;
 static unsigned g_out_w, g_out_h;            /* the largest canvas: the swapchain and the heaps are made for it */
-static int g_out_vr;                        /* BotW160: live render size, independent fixed-size streaming. */
-#ifdef GAME_BOTW160
-static _Atomic uint64_t g_out_vr_requested;  /* UI -> game frame boundary; complete width/height pair. */
-#endif
-extern void vr_resolution(int *w,int *h);
 static _Atomic uint64_t g_out_cur;           /* the canvas now, w | h << 32 */
 static _Atomic uint64_t *g_out_page;         /* the data page + 16: [0] {screen, render width} floats, [1] {width, height} */
 static uint8_t *g_out_main;
@@ -1819,16 +1804,6 @@ static int native_5k_app(void) {
 static void output_parse(void) {
     if (g_out_mode >= 0) return;
     if (ios_code()) { g_out_mode = OUT_OFF; return; }   /* the phone: the game's own size (handheld 720p) */
-    if(vr_labo_enabled()){
-        int ew=0,eh=0;vr_resolution(&ew,&eh);
-        if(vr_render_size_valid(ew,eh)){
-            g_out_vr=1;g_out_mode=OUT_FIXED;
-            g_out_w=2u*vr_render_sizes[VR_RENDER_SIZE_COUNT-1][0];g_out_h=vr_render_sizes[VR_RENDER_SIZE_COUNT-1][1];
-            atomic_store(&g_out_vr_requested,2u*(unsigned)ew|((uint64_t)(unsigned)eh<<32));
-            fprintf(stderr,"[vr] native target %dx%d per eye; packed canvas %ux%d; swapchain capacity %ux%u, live render selection, no desktop resolution override\n",ew,eh,2u*(unsigned)ew,eh,g_out_w,g_out_h);
-            return;
-        }
-    }
     const char *e = getenv("TOTK_OUTPUT_RES"); unsigned a, b; char tail;
     if (e && !strcmp(e, "0")) { g_out_mode = OUT_OFF; return; }
     if (!e || !*e || !strcmp(e, "auto")) { g_out_mode = OUT_AUTO; g_out_w = native_5k_app() ? 5120 : native_4k_app() ? 3840 : 2560; g_out_h = native_5k_app() ? 2880 : native_4k_app() ? 2160 : 1440; return; }
@@ -1911,34 +1886,6 @@ static void output_switch(unsigned w, unsigned h) {
     int ok = output_reapply();
     fprintf(stderr, "[botw] output %ux%u%s\n", w, h, ok ? " (the display mode applies it at the next frame)" : ": the game is not in a docked mode now; it applies when it is");
 }
-#ifdef GAME_BOTW160
-int runtime_vr_render_size_set(unsigned w,unsigned h) {
-    /* Called under the settings mutex: do not recursively load VR settings. */
-    if(!g_out_vr||!g_out_page||!vr_render_size_valid((int)w,(int)h))return 0;
-    atomic_store_explicit(&g_out_vr_requested,2u*w|((uint64_t)h<<32),memory_order_release);
-    return 1;
-}
-void runtime_vr_render_apply_pending(void) {
-    /* The present/game-frame boundary owns publication into the game's page.
-       Its existing display request rebuilds scene targets and viewports. */
-    if(!g_out_vr||!g_out_page)return;
-    uint64_t requested=atomic_load_explicit(&g_out_vr_requested,memory_order_acquire);
-    static int initialized;
-    if(!initialized||requested!=atomic_load(&g_out_cur)){
-        output_page((unsigned)requested,(unsigned)(requested>>32));output_static();
-        initialized=1;
-        fprintf(stderr,"[vr] live render requested %ux%u per eye; stream unchanged\n",(unsigned)requested/2,(unsigned)(requested>>32));
-    }
-    uintptr_t graphics=0,renderer=0;
-    memcpy(&graphics,g_out_main+OUT_GFX,sizeof graphics);
-    memcpy(&renderer,g_out_main+0x2cc4100,sizeof renderer);
-    if(!graphics||!renderer)return;
-    uint64_t actual=0;memcpy(&actual,(const void *)(renderer+0x4c0),sizeof actual);
-    uint8_t mode=((const uint8_t *)graphics)[OUT_MODE_CUR];
-    uint8_t pending=((const uint8_t *)graphics)[OUT_MODE_REQ];
-    if(actual!=requested&&mode==2&&pending==0xff)output_reapply();
-}
-#endif
 #ifndef GAME_BOTW160
 static void output_mfx_off(void) {   /* a start above 1080p turns MetalFX 2K off (botw_output_tick) */
     extern void dm_gfx_set_flag(const char *name, int value);
@@ -1962,9 +1909,6 @@ static int output_mfx_canvas(void) {
    the native size, and a saved "native 2K + MetalFX" (2560x1440) keeps it (#1806: the old "above 1920 wide" test predates
    that mode and turned it off at every start). 1.6.0 keeps upstream's start. */
 static void botw_output_tick(void) {
-#ifdef GAME_BOTW160
-    if(g_out_vr){runtime_vr_render_apply_pending();return;}
-#endif
     static int done;
     if (done || !g_out_page) return;
     done = 1;
@@ -2000,9 +1944,7 @@ static int patch_output_res(Module *m) {
     if (data_off + 0x4000 != m->size) runtime_fail("the output size: no data page after the main module");
     const uint64_t page = (uintptr_t)m->base + data_off;
     g_out_main = m->base; g_out_page = (_Atomic uint64_t *)(void *)(page + 16);
-    uint64_t initial_vr=atomic_load(&g_out_vr_requested);
-    output_page(g_out_vr?(unsigned)initial_vr:g_out_mode==OUT_AUTO?1920:w,
-                g_out_vr?(unsigned)(initial_vr>>32):g_out_mode==OUT_AUTO?1080:h);
+    output_page(g_out_mode == OUT_AUTO ? 1920 : w, g_out_mode == OUT_AUTO ? 1080 : h);
     uint32_t mw = movz_x(9, w, 0), mh = movk_x(9, h, 2);   /* the swapchain at the largest size */
     for (size_t i = 0; i < sizeof size_init / sizeof *size_init; i++) { memcpy(m->base + size_init[i], &mw, 4); memcpy(m->base + size_init[i] + 12, &mh, 4); }
     const uint32_t branch[4] = {
@@ -2133,7 +2075,6 @@ static unsigned output_width_now(void) { return (unsigned)(atomic_load(&g_out_cu
 /* Native 4K (a native 4K app, native_4k_app): the 3840x2160 canvas; native and native + MetalFX are then 2K, as on Tears
    of the Kingdom. */
 int runtime_output_native(int mode, unsigned *w, unsigned *h) {
-    if(g_out_vr){if(mode!=OUTPUT_MODE_NATIVE)return 0;uint64_t c=runtime_output_size_current();*w=(unsigned)c;*h=(unsigned)(c>>32);return 1;}
     if (!output_switchable()) return 0;
     int app4k = g_out_w >= 3840 && g_out_h >= 2160 && native_4k_app();
     if (mode == OUTPUT_MODE_NATIVE_5K) { if (g_out_w < 5120 || g_out_h < 2880 || !native_5k_app()) return 0; *w = 5120; *h = 2880; return 1; }
@@ -2150,7 +2091,6 @@ int runtime_output_native(int mode, unsigned *w, unsigned *h) {
     return 1;
 }
 int runtime_output_modes(void) {
-    if(g_out_vr)return 1<<OUTPUT_MODE_NATIVE;
     unsigned w, h;
     return 1 << OUTPUT_MODE_OFF | 1 << OUTPUT_MODE_METALFX | (output_switchable() ? 1 << OUTPUT_MODE_720P : 0) |
            (runtime_output_native(OUTPUT_MODE_NATIVE, &w, &h) ? 1 << OUTPUT_MODE_NATIVE | 1 << OUTPUT_MODE_NATIVE_METALFX : 0) |
@@ -2158,7 +2098,6 @@ int runtime_output_modes(void) {
            (runtime_output_native(OUTPUT_MODE_NATIVE_5K, &w, &h) ? 1 << OUTPUT_MODE_NATIVE_5K : 0);
 }
 int runtime_output_mode(void) {
-    if(g_out_vr)return OUTPUT_MODE_NATIVE;
     extern int mfxup_enabled(void);
     if (output_switchable()) {
         unsigned w = output_width_now();
@@ -2171,7 +2110,6 @@ int runtime_output_mode(void) {
 }
 int runtime_output_mode_set(int mode) {
     extern void dm_gfx_set_flag(const char *name, int value);
-    if(g_out_vr)return 0; /* Desktop saved modes/key 3 cannot change a VR eye allocation. */
     if (mode < OUTPUT_MODE_OFF || mode > OUTPUT_MODE_NATIVE_5K || !(runtime_output_modes() & 1 << mode)) return 0;
     int mfx = mode == OUTPUT_MODE_METALFX || mode == OUTPUT_MODE_NATIVE_METALFX;   /* native + MetalFX: the output stage scales the 2K canvas to the window */
     dm_gfx_set_flag("mfx_output", mfx);

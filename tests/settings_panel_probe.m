@@ -101,36 +101,6 @@ int runtime_dsu_apply(const RuntimeDSUSettings *settings) { fakeDSU=*settings; r
 int runtime_gamepad_battery_left_percent(void) { return -1; }
 int runtime_mouse_set(int on) { return fakeMouse = !!on; }
 int runtime_mouse_enabled(void) { return fakeMouse; }
-static int fakeVrEnabled, fakeVrManaged;
-int vr_enabled(void) { return fakeVrEnabled; }
-int vr_streamer_managed(void) { return fakeVrManaged; }
-void vr_resolution(int *w, int *h) { *w = *h = 0; }
-void vr_stream_resolution(int *w,int *h) { *w=2048;*h=2208; }
-int vr_set_resolution(int w, int h) { (void)w; (void)h; return 0; }
-int vr_first_person(void) { return 0; }
-void vr_set_first_person(int on) { (void)on; }
-int vr_offset_cm(int axis) { (void)axis; return 0; }
-int vr_mirror_mode(void) { return 0; }
-int vr_quest_view(void) { return 0; }
-void vr_set_quest_view(int on) { (void)on; }
-int vr_quest_zoom(void) { return 2; }
-void vr_set_quest_zoom(int x) { (void)x; }
-int vr_eye_spring_ms(void) { return 300; }
-void vr_set_eye_spring_ms(int ms) { (void)ms; }
-int vr_6dof(void) { return 0; }
-int vr_motion(void) { return 0; }
-void vr_set_motion(int on) { (void)on; }
-void vr_panel_image(const void *p, int w, int h, int s) { (void)p; (void)w; (void)h; (void)s; }
-int vr_panel_in_headset(void) { return 0; }
-void vr_set_6dof(int on) { (void)on; }
-int vr_afr(void) { return 0; }
-void vr_set_afr(int on) { (void)on; }
-int vr_ipd_pct(void) { return 100; }
-void vr_set_ipd_pct(int pct) { (void)pct; }
-int vr_snap_ms(void) { return 0; }
-void vr_set_snap_ms(int ms) { (void)ms; }
-void vr_set_mirror_mode(int on) { (void)on; }
-void vr_set_offset_cm(int axis, int cm) { (void)axis; (void)cm; }
 void runtime_mouse_set_hook(void (*hook)(void)) { (void)hook; }
 void runtime_mouse_move(double dx, double dy) { (void)dx; (void)dy; }
 void runtime_mouse_button(int button, int down) { (void)button; (void)down; }
@@ -613,7 +583,7 @@ static void shots_probe(void) {
     TOTKShotsPage *page = shots_page();
     assert(settingsOpen && settingsPanel.page == SETTINGS_PAGE_SHOTS && settingsPanel.tabs.selectedSegment == SETTINGS_PAGE_SHOTS && !page.hidden);
     assert([[settingsPanel.tabs labelForSegment:SETTINGS_PAGE_SHOTS] isEqualToString:@"Screenshots"] && SETTINGS_PAGE_SHOTS == SETTINGS_PAGE_BOARD + 1);
-    assert(settingsPanel.tabs.segmentCount == settings_pages() && settings_pages() - 1 == (vr_enabled() ? SETTINGS_PAGE_VR : SETTINGS_PAGE_SHOTS));
+    assert(settingsPanel.tabs.segmentCount == settings_pages() && settings_pages() - 1 == SETTINGS_PAGE_SHOTS);
     assert(!page.toggle.enabled && [page.state.stringValue isEqualToString:@"This run shares no screenshots"] && ![settingsPanel.controllerTargets containsObject:page.toggle]);
     for (NSInteger p = 0; p < (NSInteger)settingsPanel.pages.count; p++) assert(settingsPanel.pages[(NSUInteger)p].hidden == (p != SETTINGS_PAGE_SHOTS));
     /* 截屏 (user 2026-11-11): the capture button's request (screenshot.h screenshot_request is what it calls in the game), by a
@@ -737,7 +707,7 @@ static void nick_wait(const char *what, BOOL (^ready)(void)) {
 }
 static void nick_png(NSString *name) {
     const char *png = getenv("NICK_TEST_PNG"); if (!png) return;
-    /* the panel's layers as Core Animation composes them (as the VR capture does); cacheDisplayInRect: sometimes left the
+    /* the panel's layers as Core Animation composes them; cacheDisplayInRect: sometimes left the
        panel's own layer background out */
     [settingsPanel layoutSubtreeIfNeeded]; [settingsPanel displayIfNeeded]; [CATransaction flush];
     NSSize z = settingsPanel.bounds.size; const CGFloat k = 2;
@@ -1048,42 +1018,6 @@ int main(int argc, const char **argv) { @autoreleasepool {
     setenv("TOTK_SHOT_URL", "http://127.0.0.1:9/v1/shots", 1);    /* nor the 截图分享 page real pictures */
     setenv("TOTK_NAME_URL", "http://127.0.0.1:9/v1/name", 1);     /* nor a real nickname */
     setenv("TOTK_STATS_URL", "http://127.0.0.1:9", 1);            /* nor the 着色器贡献 page the real contributors */
-    if (argc==2 && !strcmp(argv[1],"vr-rows")) {
-        /* Exercise production row construction without NSApplication, a game,
-           a window, or GPU work. Unsupported settings must not be offered. */
-        setenv("TOTK_UI_LANG","en",1);fakeVrEnabled=fakeVrManaged=1;
-        NSMutableArray<TOTKSettingRow *> *rows=[NSMutableArray array];settings_vr_rows(rows);
-        NSMutableDictionary<NSString *,TOTKSettingRow *> *byTitle=[NSMutableDictionary dictionary];
-        for(TOTKSettingRow *r in rows)byTitle[r.title]=r;
-        assert(byTitle[@"VR · view"] && byTitle[@"Stereo · eye distance (%)"]);
-#if defined(GAME_BOTW) || defined(TOTK_GAME_V143)
-        assert(!byTitle[@"Show the Quest view"] && !byTitle[@"Mac preview zoom (x)"]);
-        assert(!byTitle[@"Head position (6DoF: lean, crouch)"]);
-        assert(!byTitle[@"Stereo (the eyes rendered in turn)"]);
-#ifdef GAME_BOTW
-        assert(!byTitle[@"First person camera spring (ms, 0 = rigid)"]);
-#else
-        assert(byTitle[@"First person camera spring (ms, 0 = rigid)"]);
-#endif
-#ifdef GAME_BOTW190
-        assert(!byTitle[@"VR · view"].set && [byTitle[@"VR · view"].choices isEqualToArray:@[@"Third person"]]);
-#else
-        assert(([byTitle[@"VR · view"].choices isEqualToArray:@[@"Third person",@"First person"]]));
-#endif
-#else
-        assert(byTitle[@"Show the Quest view"] && byTitle[@"Mac preview zoom (x)"]);
-        assert(byTitle[@"Head position (6DoF: lean, crouch)"]);
-        assert(byTitle[@"Stereo (the eyes rendered in turn)"]);
-        assert(byTitle[@"First person camera spring (ms, 0 = rigid)"]);
-#endif
-#if defined(GAME_BOTW160) || defined(TOTK_GAME_V143)
-        assert(([byTitle[@"Render resolution (per eye, immediate)"].choices isEqualToArray:@[@"0.625×　1280×1380",@"0.75×　1536×1656",@"0.875×　1792×1932",@"1.0×　2048×2208",@"1.25×　2560×2760",@"1.5×　3072×3312",@"1.75×　3584×3864",@"2.0×　4096×4416"]]));
-        assert(byTitle[@"Stream resolution (per eye)"]&&!byTitle[@"Stream resolution (per eye)"].set);
-#else
-        assert(([byTitle[@"VR · resolution (per eye)"].choices isEqualToArray:@[@"1344×1408",@"1680×1760",@"1920×2048",@"2048×2208"]]));
-#endif
-        puts("pass: supported VR settings rows");return 0;
-    }
 #ifdef TOTK_GAME_V143
     if(argc==2&&!strcmp(argv[1],"aa")){aa_preferences_probe();return 0;}
 #endif

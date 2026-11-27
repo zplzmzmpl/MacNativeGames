@@ -141,6 +141,9 @@ class GamePatches(Compiled):
         out = self.words(env={'OOT_FB_SIZE': '1920x1080', 'OOT_RT_POOL_MB': '512'})
         self.assertEqual(out['words'], '%08x %08x %08x' % (0xd2800008 | 1920 << 5, 0xf2c00008 | 1080 << 5, 0xd2a00000 | 0x2000 << 5 | 10))
 
+    def test_old_headset_environment_keeps_desktop_textures(self):
+        self.assertEqual(self.words(env={'TOTK_VR_CONTROL': 'control.txt'}), self.words())
+
     def test_the_ios_export_keeps_the_games_code(self):
         # the iOS package's game code is exported by the Mac runtime: Mac-only patches must not go with it
         out = self.words(env={'TOTK_EXPORT_IOS': '1'})

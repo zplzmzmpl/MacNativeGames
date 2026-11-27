@@ -181,20 +181,6 @@ void runtime_survey_init(Module *m) {
 }
 int runtime_survey_command(const char *line) { (void)line; return 0; }
 #endif
-void runtime_player_init(Module *m) {
-#ifdef GAME_BOTW160
-    survey_main=(uintptr_t)m->base; /* Same authoritative Havok/player owner as the existing survey. */
-#else
-    (void)m;
-#endif
-}
-uintptr_t runtime_player_pos_address(void) {
-#ifdef GAME_BOTW160
-    return havok_position();
-#else
-    return 0;
-#endif
-}
 #else
 enum { SCENE_SLOT = GAME_ADDR(0x4663f08), FORCE_MATRIX = GAME_ADDR(0x69a18c), ACTOR_POS = GAME_ACTOR_POS, ACTOR_ROT = GAME_ACTOR_ROT };
 static uintptr_t survey_main;
@@ -667,14 +653,5 @@ void runtime_survey_tick(uint64_t frame) {
     atomic_store_explicit(&runtime_survey_pending, request.kind || hold_left || route_on, memory_order_release);
     pthread_mutex_unlock(&survey_lock);
     in_tick = 0;
-}
-/* VR first person (zeldaVR): the address of the player's position (actor + ACTOR_POS), which the camera hook reads
-   each frame on the game's own thread (game_patches_v143.c). Read-only: no survey, no test profile needed. */
-void runtime_player_init(Module *m) {
-    if (!strcmp(m->name, "main") && SCENE_SLOT + 8u <= m->size && !survey_main) survey_main = (uintptr_t)m->base;
-}
-uintptr_t runtime_player_pos_address(void) {
-    uintptr_t actor = survey_main ? player_actor() : 0;
-    return actor ? actor + ACTOR_POS : 0;
 }
 #endif   /* GAME_BOTW */

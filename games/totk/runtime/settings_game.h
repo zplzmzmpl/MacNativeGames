@@ -102,13 +102,11 @@
 #define SETTINGS_HAS_EFFECTS 1
 #define SETTINGS_HAS_BOARD 1
 #define SETTINGS_HAS_SHOTS 1
-#define SETTINGS_HAS_VR 1
 #ifdef TOTK_GAME_V143
 #define SETTINGS_HAS_AA_ROWS 1   /* the effects page's quality row follows the method (settings_aa_rebuild, part 2) */
 #endif
 #include "totk_fps_limit.h"   /* totk_fps_limits: the frame lock choices */
 #include "aspect_math.h"     /* aspect_near, ASPECT_GAME */
-#include "../zeldaVR/runtime/vr_camera.h"   /* runtime_camera_distance_*: 1.4.3's camera hook, a default elsewhere */
 #include "input_prompts.h"
 #include "feedback_settings.h"   /* feedback_word: ssao.txt */
 #include "users.h"           /* the local users (runtime/account.c): the User page */
@@ -159,7 +157,7 @@ static void settings_window_size(unsigned w,unsigned h,double ratio) {
 static void settings_window_for(int mode) {
  unsigned w=1920,h=1080;
  if(mode==OUTPUT_MODE_METALFX){w=2560;h=1440;}
- else if(mode==OUTPUT_MODE_NATIVE_METALFX||mode==OUTPUT_MODE_NATIVE_4K||mode==OUTPUT_MODE_NATIVE_4K_METALFX||mode==OUTPUT_MODE_NATIVE_6K){w=3840;h=2160;}
+ else if(mode==OUTPUT_MODE_NATIVE_METALFX||mode==OUTPUT_MODE_NATIVE_4K){w=3840;h=2160;}
  else if(mode==OUTPUT_MODE_NATIVE_5K||mode==OUTPUT_MODE_4K_TO_5K_METALFX){w=5120;h=2880;}
  else if(mode==OUTPUT_MODE_720P){w=1280;h=720;}
  else if(mode==OUTPUT_MODE_NATIVE&&!runtime_output_native(mode,&w,&h)){w=1920;h=1080;}
@@ -236,7 +234,6 @@ static void settings_effects_restore(void);   /* botw_effects.h */
 static void settings_effects_restore(void) {}
 #endif
 static void settings_restore_begin(void) {
- extern int vr_enabled(void);
  int v;char word[32];
  if(settings_read_int("graphics-overlay.txt",&v)&&v<=HUD_MODE_BARE)fps_overlay_set_hud_mode(v);
  if(!getenv("TOTK_MFX")&&runtime_setting_word("graphics-frame.txt",word,sizeof word)){
@@ -258,15 +255,9 @@ static void settings_restore_begin(void) {
  }
  const char *output=getenv("TOTK_OUTPUT_RES");
  if(
-#if defined(GAME_BOTW160)
-    !vr_enabled()&&
-#endif
     (!output||!*output||!strcmp(output,"auto"))&&!getenv("TOTK_MFX_OUTPUT")&&!getenv("TOTK_MFX_UPSCALE")&&
     settings_read_int("graphics-output.txt",&v)&&v<=OUTPUT_MODE_LAST)settingsPendingOutput=v;
  if(
-#if defined(GAME_BOTW160)
-    !vr_enabled()&&
-#endif
     !getenv("TOTK_ASPECT")&&runtime_setting_word("graphics-aspect.txt",word,sizeof word)){
   char *end;float ratio=strtof(word,&end);while(*end==' '||*end=='\n'||*end=='\r'||*end=='\t')end++;
   if(end!=word&&!*end&&isfinite(ratio)&&ratio>=0.5f&&ratio<=8)settingsPendingAspect=ratio;
@@ -351,123 +342,6 @@ static TOTKSettingRow *settings_ns2_resolution_row(void) {
 #endif
 /* The DSU rows of the input page (runtime/dsu_client.h): a server to read a controller's motion from. */
 #include "dsu_settings_rows.h"
-/* VR settings (zeldaVR; user 2026-10-26: "放在一个新设置 叫 vr设置里 可以选这几种分辨率"), shown while VR is on
-   (TOTK_VR_CONTROL): the per-eye size the streamer sends to the headset. Picking one restarts the streamer the game
-   runs (TOTK_VR_STREAMER) and the headset reconnects in a few seconds. Measured on a Quest 3: 1344x1408 and 1680x1760
-   hold 72 Hz (about 81 ms); 1920x2048 is sharper at about 60 Hz and 120 ms; 2048x2208 (user 2026-10-26: "增加 2048×2208")
-   the sharpest, its H.264 encode takes about 41 ms a frame (vr开发.md). */
-int vr_enabled(void);
-int vr_streamer_managed(void);
-void vr_resolution(int *w, int *h);
-void vr_stream_resolution(int *w,int *h);
-int vr_set_resolution(int w, int h);
-int vr_first_person(void);
-void vr_set_first_person(int on);
-int vr_offset_cm(int axis);
-void vr_set_offset_cm(int axis, int cm);
-int vr_mirror_mode(void);
-void vr_set_mirror_mode(int on);
-int vr_quest_view(void);
-void vr_set_quest_view(int on);
-int vr_quest_zoom(void);
-void vr_set_quest_zoom(int x);
-int vr_eye_spring_ms(void);
-void vr_set_eye_spring_ms(int ms);
-int vr_afr(void);
-void vr_set_afr(int on);
-int vr_ipd_pct(void);
-void vr_set_ipd_pct(int pct);
-int vr_6dof(void);
-void vr_set_6dof(int on);
-int vr_snap_ms(void);
-void vr_set_snap_ms(int ms);
-int vr_motion(void);
-void vr_set_motion(int on);
-/* Third-person camera distance (zeldaVR, user 2026-10-26: "在第三人称 时候 调整 摄像机距离 ... 在设置里 我可以设置"):
-   1.4.3's camera hook (game_patches_v143.c) moves the camera along its view; with VR and without. Other versions have
-   no hook: the row is left out (runtime_camera_distance_available, ../zeldaVR/runtime/vr_camera.h). */
-/* Link's head (zeldaVR, user 2026-10-26: "第一人称 我希望 去掉头", "先做到 第三人称里 头是去掉 或者隐藏 这样方便调试"): the
-   graphics layer leaves the head's meshes out of the picture, not out of the shadows (nvn_mtl.m vr_head_mesh). Auto:
-   while VR's first person puts the camera in his head. */
-int vr_hide_head_mode(void) __attribute__((weak_import));
-void vr_set_hide_head_mode(int m) __attribute__((weak_import));
-static void settings_camera_rows(NSMutableArray<TOTKSettingRow *> *rows) {
-#ifndef GAME_BOTW
- if(vr_hide_head_mode&&vr_set_hide_head_mode)
-  [rows addObject:settings_row(settings_text("林克的头","Link's head"),
-   @[settings_text("自动（第一人称时隐藏）","Auto (hidden in first person)"),settings_text("隐藏","Hidden"),settings_text("显示","Shown")],@[@-1,@1,@0],
-   ^int{return vr_hide_head_mode();},^(int v){vr_set_hide_head_mode(v);})];
-#endif
- if(!runtime_camera_distance_available())return;
- [rows addObject:settings_row(settings_text("摄像机距离（第三人称）","Camera distance (third person)"),
-  @[settings_text("默认","Default"),settings_text("近 1 米","1 m closer"),settings_text("近 2 米","2 m closer"),settings_text("近 3 米","3 m closer"),
-    settings_text("近 4 米","4 m closer"),settings_text("近 5 米","5 m closer")],   /* user 2026-10-26: "改成 近1m 近2m 近3m 近4m 近5m" */
-  @[@0,@-100,@-200,@-300,@-400,@-500],^int{return runtime_camera_distance_cm();},^(int v){runtime_camera_distance_set(v);})];
-}
-static void settings_vr_rows(NSMutableArray<TOTKSettingRow *> *rows) {
- if(!vr_enabled())return;
-#ifdef GAME_BOTW190
- [rows addObject:settings_fixed(settings_text("VR 设置 · 视角","VR · view"),settings_text("第三人称","Third person"))];
-#elif defined(GAME_BOTW) || defined(TOTK_GAME_V143)
- [rows addObject:settings_row(settings_text("VR 设置 · 视角","VR · view"),@[settings_text("第三人称","Third person"),settings_text("第一人称","First person")],@[@0,@1],
-  ^int{return vr_first_person();},^(int v){vr_set_first_person(v);})];
-#else
- [rows addObject:settings_row(settings_text("VR 设置 · 视角","VR · view"),@[settings_text("第一人称","First person"),settings_text("第三人称","Third person")],@[@1,@0],
-  ^int{return vr_first_person();},^(int v){vr_set_first_person(v);})];
-#endif
-#ifndef GAME_BOTW
- /* the camera's spring on the head, ms (user 2026-11-02: "用 弹性 解决" the shaking; 0: bound rigidly) */
- {TOTKSettingRow *r=settings_row(settings_text("第一人称镜头弹性（毫秒，0 = 绑死）","First person camera spring (ms, 0 = rigid)"),nil,nil,^int{return vr_eye_spring_ms();},^(int v){vr_set_eye_spring_ms(v);});
-  r.sliderMin=0;r.sliderMax=300;[rows addObject:r];}
-#endif
- /* The camera's position (user 2026-10-29: "可以改变 摄像头 上下前后左右 位置 ，方便我 实时调整"): -100..100 cm each, from where
-    the game's camera faces, applied while dragging (totk_vr.m vr_set_offset_cm, kept in vr-offset.txt). */
- NSArray<NSString *> *axes=@[settings_text("摄像头 上下（厘米）","Camera up / down (cm)"),settings_text("摄像头 前后（厘米）","Camera forward / back (cm)"),
-  settings_text("摄像头 左右（厘米）","Camera right / left (cm)")];
- for(int a=0;a<3;a++){TOTKSettingRow *r=settings_row(axes[(NSUInteger)a],nil,nil,^int{return vr_offset_cm(a);},^(int v){vr_set_offset_cm(a,v);});
-  r.sliderMin=-100;r.sliderMax=100;[rows addObject:r];}
-#if !defined(GAME_BOTW) && !defined(TOTK_GAME_V143)
- /* What the Mac window shows (user 2026-10-29: "屏幕 显示 类似vr 那种 两个屏幕"): both eyes as the headset gets them, or the game's picture. */
- /* "显示 Quest 画面" (user 2026-10-30: "桌面显示 和 quest里面 一样的画面 设置里加一个 按钮 叫 显示quest画面"): the Mac window shows
-    both eyes; on, each inside its lens opening as in the headset; off, uncovered ("就是 不遮挡状态"). */
- [rows addObject:settings_row(settings_text("显示 Quest 画面","Show the Quest view"),nil,nil,^int{return vr_quest_view();},^(int v){vr_set_quest_view(v);})];
- /* ... each eye's middle 2..10 times larger then (user 2026-10-30: "设置里可以调 2倍 到 10 倍") */
- {TOTKSettingRow *r=settings_row(settings_text("Mac 预览放大（倍）","Mac preview zoom (x)"),nil,nil,^int{return vr_quest_zoom();},^(int v){vr_set_quest_zoom(v);});
-  r.sliderMin=2;r.sliderMax=10;[rows addObject:r];}
- /* The head's position (6DoF) and snap turning ("按建议 都做", 2026-10-30, after BotW BetterVR and UEVR). */
- [rows addObject:settings_row(settings_text("头部位置（6DoF：探身、下蹲）","Head position (6DoF: lean, crouch)"),nil,nil,^int{return vr_6dof();},^(int v){vr_set_6dof(v);})];
- [rows addObject:settings_row(settings_text("立体（左右眼轮流渲染）","Stereo (the eyes rendered in turn)"),nil,nil,^int{return vr_afr();},^(int v){vr_set_afr(v);})];
-#endif
- {TOTKSettingRow *r=settings_row(settings_text("立体 · 两眼间距（%）","Stereo · eye distance (%)"),nil,nil,^int{return vr_ipd_pct();},^(int v){vr_set_ipd_pct(v);});
-  r.sliderMin=30;r.sliderMax=200;[rows addObject:r];}
- [rows addObject:settings_row(settings_text("体感操作（挥剑、举盾、拉弓、手势）","Motion controls (swing, shield, bow, gestures)"),nil,nil,^int{return vr_motion();},^(int v){vr_set_motion(v);})];
- [rows addObject:settings_row(settings_text("转身方式","Turning"),@[settings_text("平滑","Smooth"),settings_text("分段（小）","Snap (small)"),settings_text("分段（中）","Snap (medium)"),settings_text("分段（大）","Snap (large)")],
-  @[@0,@120,@200,@300],^int{return vr_snap_ms();},^(int v){vr_set_snap_ms(v);})];
-#if defined(GAME_BOTW160) || defined(TOTK_GAME_V143)
- static const int sizes[][2]={{1280,1380},{1536,1656},{1792,1932},{2048,2208},{2560,2760},{3072,3312},{3584,3864},{4096,4416}};
- NSArray<NSString *> *names=@[@"0.625×　1280×1380",@"0.75×　1536×1656",@"0.875×　1792×1932",@"1.0×　2048×2208",@"1.25×　2560×2760",@"1.5×　3072×3312",@"1.75×　3584×3864",@"2.0×　4096×4416"];
-#else
- static const int sizes[][2]={{1344,1408},{1680,1760},{1920,2048},{2048,2208}};
- NSArray<NSString *> *names=@[@"1344×1408",
-  @"1680×1760",
-  @"1920×2048",
-  @"2048×2208"];
-#endif
- NSString *title=settings_text("VR 设置 · 分辨率（每眼）","VR · resolution (per eye)");
-#if defined(GAME_BOTW160) || defined(TOTK_GAME_V143)
- title=settings_text("渲染分辨率（每眼，立即生效）","Render resolution (per eye, immediate)");
- int stream_w=0,stream_h=0;vr_stream_resolution(&stream_w,&stream_h);
- [rows addObject:settings_fixed(settings_text("串流分辨率（每眼）","Stream resolution (per eye)"),
-   stream_w>0?[NSString stringWithFormat:@"%d×%d",stream_w,stream_h]:settings_text("未连接","not connected"))];
-#endif
- if(!vr_streamer_managed()){int w=0,h=0;vr_resolution(&w,&h);
-  [rows addObject:settings_fixed(title,w>0?[NSString stringWithFormat:@"%d×%d",w,h]:settings_text("未连接","not connected"))];return;}
- NSMutableArray<NSNumber *> *values=[NSMutableArray array];for(NSUInteger i=0;i<names.count;i++)[values addObject:@(i)];
- [rows addObject:settings_row(title,names,values,^int{int w=0,h=0;vr_resolution(&w,&h);
-   for(NSUInteger i=0;i<names.count;i++)if(sizes[i][0]==w&&sizes[i][1]==h)return (int)i;return -1;},
-  ^(int v){if(v>=0&&(NSUInteger)v<names.count)vr_set_resolution(sizes[v][0],sizes[v][1]);})];
-}
-
 /* Ambient occlusion: off, or the shadow pre-pass's AO with strength and radius both scaled (1.5x is the PR's tested
    level), applied at once. A run whose shaders carry no parameters (TOTK_SSAO=0) shows its one value. */
 static TOTKSettingRow *settings_ssao_row(void) {
@@ -699,8 +573,7 @@ static NSArray<TOTKSettingRow *> *settings_rows(void) {
    ^(int v){dm_gfx_keepalive_set(v);runtime_shared_setting_save("gpu-keepalive.txt",v?"on":"off","GPU keep-alive");})];}
  int modes=runtime_output_modes();
  NSMutableArray<NSString *> *res=[NSMutableArray array];NSMutableArray<NSNumber *> *resModes=[NSMutableArray array];
- static const int order[]={OUTPUT_MODE_720P,OUTPUT_MODE_720P_METALFX,OUTPUT_MODE_OFF,OUTPUT_MODE_METALFX,OUTPUT_MODE_NATIVE,OUTPUT_MODE_NATIVE_METALFX,OUTPUT_MODE_NATIVE_4K,OUTPUT_MODE_4K_TO_5K_METALFX,OUTPUT_MODE_NATIVE_5K,
-  OUTPUT_MODE_NATIVE_4K_METALFX,OUTPUT_MODE_NATIVE_6K};   /* the last two: VR only (game_patches_v143.c vr_big_mode) */
+ static const int order[]={OUTPUT_MODE_720P,OUTPUT_MODE_720P_METALFX,OUTPUT_MODE_OFF,OUTPUT_MODE_METALFX,OUTPUT_MODE_NATIVE,OUTPUT_MODE_NATIVE_METALFX,OUTPUT_MODE_NATIVE_4K,OUTPUT_MODE_4K_TO_5K_METALFX,OUTPUT_MODE_NATIVE_5K};
  for(unsigned i=0;i<sizeof order/sizeof *order;i++){
   int m=order[i];if(!(modes&1<<m))continue;unsigned nw=0,nh=0;runtime_output_native(m,&nw,&nh);
   [res addObject:m==OUTPUT_MODE_720P?@"720p":m==OUTPUT_MODE_720P_METALFX?settings_text("720p + MetalFX 放大","720p + MetalFX upscaling"):m==OUTPUT_MODE_OFF?@"1080p":m==OUTPUT_MODE_METALFX?settings_text("1080p + MetalFX 放大","1080p + MetalFX upscaling"):
@@ -708,17 +581,10 @@ static NSArray<TOTKSettingRow *> *settings_rows(void) {
    m==OUTPUT_MODE_4K_TO_5K_METALFX?settings_text("4K + MetalFX 放大到 5K","4K + MetalFX to 5K"):
    m==OUTPUT_MODE_NATIVE_5K?settings_text("原生 5K（5120×2880）","Native 5K (5120×2880)"):
    m==OUTPUT_MODE_NATIVE_4K?settings_text("原生 4K（3840×2160）","Native 4K (3840×2160)"):
-   m==OUTPUT_MODE_NATIVE_4K_METALFX?settings_text("4K + MetalFX 8K","4K + MetalFX 8K"):
-   m==OUTPUT_MODE_NATIVE_6K?settings_text("原生 6K（约 20 帧）","Native 6K (about 20 fps)"):
    nw==2560&&nh==1440?settings_text("2K（2560×1440）","2K (2560×1440)"):
    [NSString stringWithFormat:@(TOTK_UI("原生 %u×%u","Native %u×%u")),nw,nh]];
   [resModes addObject:@(m)];}
  NSString *resolution=settings_text("分辨率","Resolution");
- int vr_eye_sizing=0;
-#if defined(GAME_BOTW160)
- vr_eye_sizing=vr_enabled();
-#endif
- if(!vr_eye_sizing){
 #if defined(GAME_DKB) || defined(GAME_POKOPIA)
  (void)resolution;
  [rows addObject:settings_ns2_resolution_row()];
@@ -749,7 +615,6 @@ static NSArray<TOTKSettingRow *> *settings_rows(void) {
     runtime_front_resize_aspect(r);char word[32];snprintf(word,sizeof word,"%.8g",r);runtime_setting_save("graphics-aspect.txt",word,"aspect ratio");
 #endif
    }})];}
- }
  NSUInteger display=rows.count;
  /* Input */
  TOTKSettingRow *pad=settings_row(settings_text("手柄类型","Controller type"),@[settings_pad_auto_text(),@"Xbox",@"PlayStation",@"Switch"],
@@ -806,14 +671,6 @@ static NSArray<TOTKSettingRow *> *settings_rows(void) {
  [rows addObject:settings_aniso_row()];
  [rows addObjectsFromArray:settings_effect_rows()];
  for(NSUInteger i=0;i<rows.count;i++)rows[i].page=i<display?SETTINGS_PAGE_DISPLAY:i<input?SETTINGS_PAGE_INPUT:i<users?SETTINGS_PAGE_USERS:SETTINGS_PAGE_EFFECTS;
- if(vr_enabled()){   /* zeldaVR, its own page: the game's render resolution again (the display page's setting), camera, VR settings */
-  NSUInteger vr=rows.count;
-  if(res.count>=2)[rows addObject:settings_row(settings_text("游戏渲染分辨率","Game render resolution"),res,resModes,
-   ^int{return runtime_output_mode();},^(int v){settingsPendingOutput=-1;if(runtime_output_mode_set(v)){settings_window_for(v);settings_save_int("graphics-output.txt",v,"resolution");}})];
-  settings_camera_rows(rows);
-  settings_vr_rows(rows);
-  for(NSUInteger i=vr;i<rows.count;i++)rows[i].page=SETTINGS_PAGE_VR;
- }
  return rows;
 }
 /* The game actions the key bindings page lists, in its order; action -1 starts a section (SettingsAction,

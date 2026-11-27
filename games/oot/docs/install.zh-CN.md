@@ -97,7 +97,7 @@ Launcher 使用随附的源码。要应用本仓库的新提交，先安装包�
 | `… must remain outside the source checkout` | 把 `--work` 和 `-o` 放到 `MacNativeGames` 目录外面。 |
 | `the work folder … is on …, a volume that is not mounted` | 挂载报错指出的卷后重试，或用 `--work <目录>` 指定新工作目录。卷已挂载时，更新会在原处重建缺失的工作目录和上层目录。 |
 | `unfinished App staging directory exists; left untouched` | 上次打包在写 App 时停下了：删掉 App 旁边的 `.Ocarina of Time.app.ready` 目录，再打包。 |
-| `this title currently uses its original rendering options` | 去掉 `--native-4k`、`--native-5k` 和 `--vr`。 |
+| `this title currently uses its original rendering options` | 去掉 `--native-4k` 和 `--native-5k`。 |
 | `game did not finish its normal close; App left untouched` | 退出游戏后再打包。 |
 
 还是不行？开一个 [issue](https://github.com/ly05010419/MacNativeGames/issues)，写上命令（路径可以缩短）、Mac 型号、macOS 版本、`git log -1 --oneline`、`ERROR:` 那一行和它指出的日志的结尾。不要附上游戏文件、字体或 App。

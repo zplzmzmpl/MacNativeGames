@@ -128,8 +128,6 @@ int runtime_aspect_set_ratio(float r) {
     (void)r;return 0;
 #endif
 }
-/* TOTK's VR and camera-distance hooks (zeldaVR, the settings panel) are left to their weak defaults (zeldaVR/gfx/vr_defaults.c):
-   no sites in a Switch 2 game, so VR and the camera row stay off. */
 float runtime_aspect_ratio(void) {
 #if defined(GAME_DKB) || defined(GAME_POKOPIA)
     unsigned w,h;if(!atomic_load(&output_page)||!runtime_output_res(&w,&h))return 0;

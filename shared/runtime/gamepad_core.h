@@ -37,10 +37,6 @@ static inline void gamepad_game_dsu_input(int active) { (void)active; }
 #ifndef GAMEPAD_GAME_POINTING   /* 1 while the mouse points (mouse_look_point) instead of turning the camera */
 static inline int gamepad_game_mouse_points(void) { return 0; }
 #endif
-#ifndef GAMEPAD_GAME_VR   /* a headset: the settings chord tapped (NULL: the chord opens the panel at once), its controllers */
-static inline void (*gamepad_game_chord_tap(void))(void) { return NULL; }
-static inline void gamepad_game_merge(RuntimeGamepadState *out, int plain) { (void)out; (void)plain; }
-#endif
 #ifndef GAMEPAD_GAME_REACH   /* a stick axis (0 lx, 1 ly, 2 rx, 3 ry; -1..1, up positive) before the dead zone; the layout's own lines */
 static inline float gamepad_game_stick(int axis, float value) { (void)axis; return value; }
 static inline int gamepad_game_layout_text(const char *text, const char **error) { (void)text; (void)error; return 0; }

@@ -1,5 +1,5 @@
 """Ocarina of Time's work-folder copy of games/oot mirrors the checkout (build.py sync_tree): a source file the checkout no
-longer has leaves the copy, the build's own folders stay, and linked folders (the shared graphics layer, zeldaVR) are
+longer has leaves the copy, the build's own folders stay, and linked folders (the shared graphics layer) are
 copied as their contents. 2026-11-13: a copy that only added files kept a branch's nvn_pool_sources.m, which the
 Makefile's wildcard compiled with another checkout's headers."""
 import importlib.util
@@ -29,9 +29,12 @@ class SyncTree(unittest.TestCase):
             (tree / 'build/obj').mkdir(parents=True); (tree / 'build/obj/kept.m.o').write_text('object')
             (tree / 'extracted').mkdir(); (tree / 'extracted/romfs.bin').write_text('unpacked game data')
             (tree / 'scripts/__pycache__').mkdir(parents=True); (tree / 'scripts/__pycache__/x.pyc').write_text('cache')
+            (tree / 'zeldaVR/gfx').mkdir(parents=True)
+            (tree / 'zeldaVR/gfx/totk_vr.m').write_text('old headset source')
             (source / 'gfx/branch_only.m').unlink(); (shared / 'nvn/gone.h').write_text('new'); (shared / 'nvn/gone.h').unlink()
             build.sync_tree(source, tree)
             self.assertFalse((tree / 'gfx/branch_only.m').exists())
+            self.assertFalse((tree / 'zeldaVR').exists())
             self.assertEqual((tree / 'gfx/kept.m').read_text(), 'both')
             self.assertEqual((tree / 'build/obj/kept.m.o').read_text(), 'object')
             self.assertEqual((tree / 'extracted/romfs.bin').read_text(), 'unpacked game data')

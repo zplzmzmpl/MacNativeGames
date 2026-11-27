@@ -92,7 +92,7 @@ static void patch_oot_timestep(Module *m) {
     }
     uint64_t page = (m->file_size + 0x3fff) & ~0x3fffULL;
     uint64_t stub = (m->text_end + 15) & ~15ULL;
-    uint64_t water_stub = stub + 384;   /* after resolution veneers (+372) and before OOT_VR_CALL_STUB (+512) */
+    uint64_t water_stub = stub + 384;   /* after resolution veneers (+372) */
     uint64_t rx_end = (m->text_end + 0x3fff) & ~0x3fffULL;
     if (m->text_end != 0x3c461d0 || m->file_size < 0x4e94b28 ||
         page + 0x4000 > m->size || stub + sizeof input + sizeof logic > rx_end ||

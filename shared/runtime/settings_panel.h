@@ -13,7 +13,6 @@
      SETTINGS_HAS_EFFECTS   the Effects page and its Reset to defaults (the game's settings_effects_reset)
      SETTINGS_HAS_BOARD     the 排行榜 page (board_tab.h, board_upload.h) and the board's code in 访问主页
      SETTINGS_HAS_SHOTS     the 截图分享 page (shot_tab.h, shot_upload.h) and its screenshot folder chooser
-     SETTINGS_HAS_VR        the VR page while VR is on (zeldaVR), and the panel in the headset
      SETTINGS_HAS_AA_ROWS   effects rows that follow the anti-aliasing method: the panel is made again in place (the game's
                             settings_aa_rebuild, Tears of the Kingdom 1.4.3)
      SETTINGS_HAS_CONTRIB   the 着色器贡献 page (contrib_tab.h); unset is 1, every game had it before this switch. A game
@@ -67,9 +66,9 @@ static inline int settings_read_number(const char *name, double lo, double hi, d
 }
 
 /* The pages, in tab order. A page added here is counted in perPage (the panel height), given its tab, and its rows a
-   SETTINGS_PAGE_* in the game's settings_rows. VR (zeldaVR) is last and only there while VR is on (settings_pages); a page
+   SETTINGS_PAGE_* in the game's settings_rows. A page
    the game does not have (its SETTINGS_HAS_*) has no tab (settings_page_present). */
-enum { SETTINGS_PAGE_DISPLAY, SETTINGS_PAGE_INPUT, SETTINGS_PAGE_USERS, SETTINGS_PAGE_EFFECTS, SETTINGS_PAGE_BINDINGS, SETTINGS_PAGE_CONTRIB, SETTINGS_PAGE_BOARD, SETTINGS_PAGE_SHOTS, SETTINGS_PAGE_OCARINA, SETTINGS_PAGE_VR, SETTINGS_PAGES };
+enum { SETTINGS_PAGE_DISPLAY, SETTINGS_PAGE_INPUT, SETTINGS_PAGE_USERS, SETTINGS_PAGE_EFFECTS, SETTINGS_PAGE_BINDINGS, SETTINGS_PAGE_CONTRIB, SETTINGS_PAGE_BOARD, SETTINGS_PAGE_SHOTS, SETTINGS_PAGE_OCARINA, SETTINGS_PAGES };
 static void settings_refresh_all(void);
 static void settings_rebuild(void);
 static void settings_pointer_used(void);
@@ -207,9 +206,6 @@ enum { SETTINGS_BIND_PANEL = 100 };
 #ifndef SETTINGS_HAS_SHOTS
 #define SETTINGS_HAS_SHOTS 0
 #endif
-#ifndef SETTINGS_HAS_VR
-#define SETTINGS_HAS_VR 0
-#endif
 #ifndef SETTINGS_HAS_AA_ROWS
 #define SETTINGS_HAS_AA_ROWS 0
 #endif
@@ -235,10 +231,7 @@ enum { SETTINGS_BIND_PANEL = 100 };
 #include "users.h"           /* the local users (runtime/account.c): the User page */
 #endif
 
-/* The tabs: the pages this game has, in SETTINGS_PAGE_* order; VR only while it is on. */
-#if SETTINGS_HAS_VR
-int vr_enabled(void);   /* zeldaVR/gfx/totk_vr.m: a headset link was asked for (TOTK_VR_CONTROL) */
-#endif
+/* The tabs: the pages this game has, in SETTINGS_PAGE_* order. */
 static BOOL settings_page_present(NSInteger page) {
  switch(page){
   case SETTINGS_PAGE_USERS:return SETTINGS_HAS_USERS;
@@ -247,11 +240,6 @@ static BOOL settings_page_present(NSInteger page) {
   case SETTINGS_PAGE_SHOTS:return SETTINGS_HAS_SHOTS;
   case SETTINGS_PAGE_CONTRIB:return SETTINGS_HAS_CONTRIB;
   case SETTINGS_PAGE_OCARINA:return SETTINGS_HAS_OCARINA;
-#if SETTINGS_HAS_VR
-  case SETTINGS_PAGE_VR:return vr_enabled()!=0;
-#else
-  case SETTINGS_PAGE_VR:return NO;
-#endif
   default:return page>=0&&page<SETTINGS_PAGES;
  }
 }
@@ -570,10 +558,7 @@ static NSString *settings_version_text(void) {
  return [NSString stringWithFormat:@(TOTK_UI("版本 %s","Ver. %s")),SETTINGS_GAME_VERSION];
 }
 @implementation TOTKSettingsPanel
-/* SETTINGS_W: every tab whole in both languages, with VR's too (measured 2026-11-11, macOS 26, the real NSSegmentedControl:
-   the English tabs with VR need about 700 pt and stay inside the bar's 14 pt margins from a 728 pt panel; narrower, the bar
-   spills over its margins, and under about 708 pt labels are cut to "…"). A window too narrow for it gets a narrower panel,
-   down to SETTINGS_NARROW_W (the width before the 截图分享 tab). */
+/* The panel narrows to fit the window, down to SETTINGS_NARROW_W. */
 enum { SETTINGS_RADIUS = RUNTIME_GLASS_RADIUS };   /* hud_box.h: the glass's one corner */
 enum { SETTINGS_W = 740, SETTINGS_NARROW_W = 600, SETTINGS_ROW_H = 34, SETTINGS_GAP = 6, SETTINGS_TOP = 90, SETTINGS_BOTTOM = 34, SETTINGS_POP_W = 260, SETTINGS_POP_MAX_W = 304, SETTINGS_LABEL_W = 350,
        SETTINGS_CELL_W = 118, SETTINGS_CELL_MAX_W = 140, SETTINGS_CELL_GAP = 6, SETTINGS_BIND_ROW_H = 28, SETTINGS_SECTION_H = 24 };
@@ -581,7 +566,7 @@ enum { SETTINGS_W = 740, SETTINGS_NARROW_W = 600, SETTINGS_ROW_H = 34, SETTINGS_
  NSArray<TOTKSettingRow *> *rows=settings_rows();
  /* The tallest page decides the panel's height (the key bindings page has its own drawing). */
  NSUInteger perPage[SETTINGS_PAGES]={0};for(TOTKSettingRow *r in rows)perPage[r.page]++;
- NSUInteger most=MAX(perPage[SETTINGS_PAGE_VR],perPage[SETTINGS_PAGE_OCARINA]);for(NSUInteger i=0;i<SETTINGS_PAGE_BINDINGS;i++)most=MAX(most,perPage[i]);
+ NSUInteger most=perPage[SETTINGS_PAGE_OCARINA];for(NSUInteger i=0;i<SETTINGS_PAGE_BINDINGS;i++)most=MAX(most,perPage[i]);
  /* The rows close up (down to 24 pt, 2 pt apart: a 26 pt menu then meets the next one's edge) when the panel would not fit the window (21:9 or 32:9 on a laptop
     screen), so its title, close button, tabs and first rows stay in view. */
  CGFloat n=most,rowH=SETTINGS_ROW_H,gap=SETTINGS_GAP,room=window?window.contentView.bounds.size.height-8:CGFLOAT_MAX;
@@ -622,7 +607,7 @@ enum { SETTINGS_W = 740, SETTINGS_NARROW_W = 600, SETTINGS_ROW_H = 34, SETTINGS_
  title.textColor=NSColor.whiteColor;title.frame=NSMakeRect(18,h-38,300,24);[self addSubview:title];
  NSButton *close=[NSButton buttonWithTitle:@"✕" target:self action:@selector(close:)];close.bordered=NO;close.refusesFirstResponder=YES;
  close.font=[NSFont systemFontOfSize:15 weight:NSFontWeightBold];close.contentTintColor=NSColor.whiteColor;close.frame=NSMakeRect(W-40,h-40,28,28);[self addSubview:close];
- NSArray<NSString *> *pageNames=@[settings_text("画面","Display"),settings_text("输入","Input"),settings_text("用户","User"),settings_text("画面效果","Effects"),settings_text("按键设置","Key bindings"),settings_text("着色器贡献","Shaders"),settings_text("性能排行榜","Performance"),settings_text("截图分享","Screenshots"),settings_text("陶笛","Ocarina"),@"VR"];   /* SETTINGS_PAGE_* order */
+ NSArray<NSString *> *pageNames=@[settings_text("画面","Display"),settings_text("输入","Input"),settings_text("用户","User"),settings_text("画面效果","Effects"),settings_text("按键设置","Key bindings"),settings_text("着色器贡献","Shaders"),settings_text("性能排行榜","Performance"),settings_text("截图分享","Screenshots"),settings_text("陶笛","Ocarina")];   /* SETTINGS_PAGE_* order */
  NSMutableArray<NSString *> *tabNames=[NSMutableArray array];   /* the pages this game has (settings_page_present) */
  for(NSInteger p=0;p<SETTINGS_PAGES;p++)if(settings_page_present(p))[tabNames addObject:pageNames[(NSUInteger)p]];
  TOTKTabs *tabs=[[TOTKTabs alloc] initWithLabels:tabNames target:self action:@selector(tabChanged:)];
@@ -631,7 +616,7 @@ enum { SETTINGS_W = 740, SETTINGS_NARROW_W = 600, SETTINGS_ROW_H = 34, SETTINGS_
  /* the menus widen with the panel up to 304 pt ("Handheld (less vegetation, faster, default)" whole) while the titles keep
     350 ("GPU keep-alive (holds the clock up; hotter, more power)" is 348); 260 in a narrower panel */
  CGFloat popW=fmax(SETTINGS_POP_W,fmin(SETTINGS_POP_MAX_W,W-28-24-SETTINGS_LABEL_W));
- NSView *(^rowPage)(NSInteger)=^NSView *(NSInteger p){   /* the pages of rows: display, input, effects and (zeldaVR) VR */
+ NSView *(^rowPage)(NSInteger)=^NSView *(NSInteger p){   /* the pages of rows: display, input, effects and game settings */
   NSUInteger count=0;for(TOTKSettingRow *r in rows)if(r.page==p)count++;
   CGFloat docH=fmax(body,count*(rowH+gap)-gap);
   NSView *page=[[NSView alloc] initWithFrame:NSMakeRect(0,SETTINGS_BOTTOM,W,docH)];NSUInteger k=0;
@@ -692,9 +677,6 @@ enum { SETTINGS_W = 740, SETTINGS_NARROW_W = 600, SETTINGS_ROW_H = 34, SETTINGS_
  [pages addObject:rowPage(SETTINGS_PAGE_OCARINA)];   /* the game's rows on its 陶笛 page (settings_game.h) */
 #else
  [pages addObject:[[NSView alloc] initWithFrame:NSZeroRect]];   /* no 陶笛 page: its place kept, self.pages[SETTINGS_PAGE_*] */
-#endif
-#if SETTINGS_HAS_VR
- if(vr_enabled())[pages addObject:rowPage(SETTINGS_PAGE_VR)];
 #endif
  self.pages=pages;
  /* The bottom line: the version on the left (PR #1210; the overlay keeps it too, user 2026-10-25); the reset buttons on the right
@@ -1240,35 +1222,10 @@ static void settings_rebuild(void) {
 #define SETTINGS_GAME_PART 2
 #include "settings_game.h"
 #undef SETTINGS_GAME_PART
-#if SETTINGS_HAS_VR
-/* The panel in the headset (zeldaVR, "按建议 都做", 2026-10-30: hold the left X on a Quest controller to open it, the
-   Quest buttons then work it by name): while it is open with VR on, its layers are drawn into a bitmap ten times a
-   second (twice the size, for the headset's pixels) and handed to the VR thread (gfx/nvn/totk_vr.m vr_panel_image),
-   which shows it in the middle of the view; NULL when it closes. */
-void vr_panel_image(const void *bgra, int w, int h, int stride);
-int vr_panel_in_headset(void);   /* off by default (user 2026-10-30: "先 关闭 设置在 vr里的效果") */
-static NSTimer *settingsVRTimer;
-static void settings_vr_capture(void) {
- if(!settingsOpen||!settingsPanel||settingsPanel.hidden||!vr_panel_in_headset()){vr_panel_image(NULL,0,0,0);return;}
- const CGFloat k=2;NSSize z=settingsPanel.bounds.size;int w=(int)(z.width*k),h=(int)(z.height*k);if(w<=0||h<=0)return;
- static uint8_t *buf;static size_t cap;size_t need=(size_t)w*h*4;
- if(need>cap){uint8_t *nb=realloc(buf,need);if(!nb)return;buf=nb;cap=need;}
- CGColorSpaceRef cs=CGColorSpaceCreateDeviceRGB();
- CGContextRef ctx=CGBitmapContextCreate(buf,(size_t)w,(size_t)h,8,(size_t)w*4,cs,kCGImageAlphaPremultipliedFirst|kCGBitmapByteOrder32Little);   /* BGRA in memory */
- CGColorSpaceRelease(cs);if(!ctx)return;
- CGContextClearRect(ctx,CGRectMake(0,0,w,h));CGContextScaleCTM(ctx,k,k);[settingsPanel.layer renderInContext:ctx];CGContextRelease(ctx);
- vr_panel_image(buf,w,h,w*4);
-}
-#endif
 static void settings_show(int open) {   /* main thread */
  open=!!open;
  if(!window||open==settingsOpen||(open&&textEntryOpen))return;
  /* Made again at every opening: what the game offers (aspect ratio, resolution) is known only once its code is in. */
- /* With VR running, the first opening shows the VR page (user 2026-10-30: "启动vr的时候 打开设置 默认打开vr tab"); later ones
-    the page left last. */
-#if SETTINGS_HAS_VR
- {static int vrPageShown;if(open&&!vrPageShown&&vr_enabled()){vrPageShown=1;g_settings_page=SETTINGS_PAGE_VR;}}
-#endif
  if(open){g_settings_controller_active=NO;settings_panel_replace();}else [settingsPanel endCapture];
  settingsOpen=open;
  runtime_gamepad_text_capture(open);
@@ -1276,11 +1233,6 @@ static void settings_show(int open) {   /* main thread */
  else{[window makeFirstResponder:window.contentView];
   if(window.isKeyWindow&&(window.styleMask&NSWindowStyleMaskFullScreen))[(TOTKInputView *)window.contentView setCursorAutoHideEnabled:YES];}
  settingsPanel.hidden=!open;
-#if SETTINGS_HAS_VR
- [settingsVRTimer invalidate];settingsVRTimer=nil;
- if(open&&vr_enabled()&&vr_panel_in_headset())settingsVRTimer=[NSTimer scheduledTimerWithTimeInterval:0.1 repeats:YES block:^(NSTimer *t){(void)t;settings_vr_capture();}];
- settings_vr_capture();   /* the first picture now, or the headset's copy gone */
-#endif
  front_mouse_update();
  fprintf(stderr,"[totk] settings panel %s\n",open?"open":"closed");
  if(totk_sr_settings)totk_sr_settings(open);   /* TOTK_STATE_REPORTING: the game gets no input while it is open */

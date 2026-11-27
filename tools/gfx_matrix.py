@@ -22,7 +22,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 GAME_DIR = ROOT / 'games/totk'
 GFX = 'third_party/d2r_gfx'
-# games/totk/Makefile: build/gfx (TOTK 1.0.0 / 1.2.1), build/gfx-v143 (only zeldaVR differs), build/gfx-botw,
+# games/totk/Makefile: build/gfx (TOTK 1.0.0 / 1.2.1 / 1.4.3), build/gfx-botw,
 # build/gfx-botw190, build/gfx-dkb, build/gfx-pkp
 CONFIGS = {
     'totk': [],
@@ -114,7 +114,10 @@ def main():
         base = Path(d)
         # shared: the layer's files that are the same for every game are links into it (64e64877); without it the
         # reference tree compiles nothing and every old warning counts as new
-        arch = subprocess.run(['git', 'archive', a.base, 'games/totk', 'games/oot/runtime', 'zeldaVR', 'shared'], cwd=ROOT, capture_output=True, check=True).stdout
+        paths = ['games/totk', 'games/oot/runtime', 'shared']
+        if subprocess.run(['git', 'cat-file', '-e', f'{a.base}:zeldaVR'], cwd=ROOT, capture_output=True).returncode == 0:
+            paths.append('zeldaVR')  # old reference revisions included the headset renderer
+        arch = subprocess.run(['git', 'archive', a.base, *paths], cwd=ROOT, capture_output=True, check=True).stdout
         subprocess.run(['tar', '-x', '-C', str(base)], input=arch, check=True)
         before = run(base / 'games/totk', configs, targets, a.j)
         after = run(GAME_DIR, configs, targets, a.j)

@@ -26,8 +26,8 @@ def build_helpers():
 TREE_SKIP=('__pycache__','*.pyc','.venv','build','extracted','rewritten','analysis','Gen')   # the build's own output and caches (Gen: ios/Gen, the device seed and its compiled-library cache)
 
 def sync_tree(source,tree):
-    """The work folder's copy of games/oot mirrors the checkout: files are copied (linked folders, the shared graphics
-    layer and zeldaVR, as their contents), and a file or folder the checkout no longer has is deleted. A copy that only
+    """The work folder's copy of games/oot mirrors the checkout: the shared graphics link is copied as a directory,
+    and a file or folder the checkout no longer has is deleted. A copy that only
     added files kept another branch's nvn_pool_sources.m, which the Makefile's wildcard compiled with this checkout's
     headers (2026-11-13). The names in TREE_SKIP are neither copied nor deleted."""
     import fnmatch
@@ -58,7 +58,7 @@ RUNTIME_STAMP='runtime-source.sha256'   # in the work folder's build/, beside th
 
 def runtime_source_digest(root=None):
     """One digest of every file the runtime's make can read under root (sources, headers, Makefile), by path and content;
-    symbolic links followed (third_party, zeldaVR), each real folder once."""
+    symbolic links followed (third_party), each real folder once."""
     root=Path(root or GAME);h=hashlib.sha256();seen=set()
     for top,dirs,files in os.walk(root,followlinks=True):
         real=os.path.realpath(top)
@@ -592,10 +592,6 @@ def package_app(work,tree,out,game_data_mode='app',game_data_folder=None,shared=
     subprocess.run([sys.executable,GAME/'scripts/make_opening_overlay.py','--romfs',tree/'extracted/oot/romfs',
                     '--output',opening_overlay],check=True)
     took('opening overlay')
-    vr_rig=tree/'extracted/oot/vr-rig'   # Link's two models for the VR body; a game without them plays on with him drawn whole
-    made=subprocess.run([sys.executable,GAME/'scripts/make_vr_rig.py','--romfs',tree/'extracted/oot/romfs','--output',vr_rig])
-    if made.returncode:print('   VR models could not be made: first person in VR shows his whole body',flush=True)
-    took('VR models')
     temporary=out.with_name('.'+out.name+'.ready')
     if temporary.exists():raise ValueError('unfinished App staging directory exists; left untouched: '+str(temporary))
     mac=temporary/'Contents/MacOS';res=temporary/'Contents/Resources';data=res/'totk'
@@ -623,7 +619,6 @@ def package_app(work,tree,out,game_data_mode='app',game_data_folder=None,shared=
     shutil.copytree(tree/'extracted/oot/romfs',data/'extracted/oot/romfs',copy_function=clone_file,
                     ignore=shutil.ignore_patterns('romfs.bin','.romfs-verified*'))
     shutil.copytree(opening_overlay,data/'extracted/oot/romfs-patches',copy_function=clone_file)
-    if not made.returncode:shutil.copytree(vr_rig,data/'extracted/oot/vr-rig',copy_function=clone_file)
     # Reuse the repository's existing game-data packaging. Its signed helper
     # avoids hashing an unchanged 26 GB image on every native runtime update.
     build_app=build_helpers()

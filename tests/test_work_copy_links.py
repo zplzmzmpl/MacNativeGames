@@ -66,7 +66,7 @@ class WorkCopyLinks(unittest.TestCase):
         source = (ROOT / 'build_app.py').read_text()
         body = source[source.index('def prepare_work('):source.index('\n\n\n', source.index('def prepare_work('))]
         self.assertNotIn("'rsync'", body)
-        self.assertEqual(body.count('sync_folder('), 4)   # the game, zeldaVR, games/botw, the Switch 2 games
+        self.assertEqual(body.count('sync_folder('), 3)   # the game, games/botw, the Switch 2 games
 
 
 if __name__ == '__main__':

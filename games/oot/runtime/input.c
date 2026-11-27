@@ -92,37 +92,21 @@ static void user_input(const char *what){
    layout above). Key 1 (Mac key code 18) opens and closes the settings panel (frontend.m) from either; held-key repeats do
    not toggle it. Keys 2-7 are no shortcuts any more (user 2026-10-25: the panel replaces them). */
 enum { KEY_SETTINGS = KEYMAP_SETTINGS_KEY };
-/* zeldaVR: P (Mac key code 35) switches VR between first and third person (user 2026-11-01: "添加 一个按钮 ... 切换 第一人称和
-   第三人称", P chosen: V is the game's R3); the same switch as the settings panel's row (gfx/nvn/totk_vr.m). Only with VR
-   on; P is in no default layout. */
-enum { KEY_VR_VIEW = 35, KEY_VR_RECENTER = 31 };
-extern int vr_first_person(void) __attribute__((weak_import));
-extern void vr_set_first_person(int on) __attribute__((weak_import));
-extern void vr_recenter(void) __attribute__((weak_import));
-static int vr_on(void){const char *c=getenv("TOTK_VR_CONTROL");return c&&*c;}
-static void vr_view_key(void){if(!vr_on()||!vr_first_person||!vr_set_first_person)return;vr_set_first_person(!vr_first_person());}
-/* O (Mac key code 31) recentres VR (user 2026-11-01: "添加一个键 o把 摆正 重置 vr 镜头"): straight ahead becomes where the head
-   looks now and the head's position starts from here, as both stick clicks do (gfx/nvn/totk_vr.m vr_recenter). */
-static void vr_recenter_key(void){if(vr_on()&&vr_recenter){vr_recenter();fprintf(stderr,"[totk-input] O: VR recentred\n");}}
 /* The screenshot action (keyboard_map.h KEYMAP_SCREENSHOT, P by default; user 2026-11-11): a press of one of its inputs takes
    the capture button's picture (gamepad.m runtime_capture_press -> screenshot.h). Its inputs drive nothing in the game
-   (keymap_apply). With VR on, P and O keep their VR use above and take no picture. */
+   (keymap_apply). */
 static int screenshot_input_locked(int input){return keymap_action_of(&keyMap,input,NULL)==KEYMAP_SCREENSHOT;}
 static void screenshot_input(int input){
- if(input==KEY_VR_VIEW||input==KEY_VR_RECENTER){if(vr_on())return;}
  const char *name=keymap_input_name(input);fprintf(stderr,"[totk-input] screenshot: %s\n",name?name:"?");
  if(runtime_capture_press)runtime_capture_press();
 }
 void runtime_input_key_synthetic(unsigned code,int down){if(code>=128)return;pthread_mutex_lock(&inputLock);int press=down&&!keys[code];if(down&&!keys[code])pending|=button(code);keys[code]=(unsigned char)!!down;held_buttons_locked();pthread_mutex_unlock(&inputLock);
  if(press&&code==KEY_SETTINGS)runtime_settings_toggle();
- if(press&&code==KEY_VR_VIEW)vr_view_key();
- if(press&&code==KEY_VR_RECENTER)vr_recenter_key();}
+}
 void runtime_input_key(unsigned code,int down){
  if(code>=128||ignore_user())return;if(down)user_input("keyboard");
  pthread_mutex_lock(&inputLock);int press=down&&!held[code];held[code]=(unsigned char)!!down;held_changed_locked();int shot=press&&screenshot_input_locked((int)code);pthread_mutex_unlock(&inputLock);
  if(press&&code==KEY_SETTINGS)runtime_settings_toggle();
- if(press&&code==KEY_VR_VIEW)vr_view_key();
- if(press&&code==KEY_VR_RECENTER)vr_recenter_key();
  if(shot)screenshot_input((int)code);
 }
 /* A mouse button in mouse mode (runtime/gamepad.m: 0 left, 1 right, 2 middle, 3 and 4 the side buttons). */
@@ -149,7 +133,6 @@ static void supported_ids(const uint32_t *ids,uint64_t n){if(n>10||(!ids&&n))run
 static void supported_styles(uint32_t value){pthread_mutex_lock(&inputLock);styles=value;pthread_mutex_unlock(&inputLock);}
 static uint32_t style(const uint32_t *id){if(!id)runtime_fail("controller id pointer");input_log("style set",*id);pthread_mutex_lock(&inputLock);uint32_t v=enabled&&allowed&&*id==pad_id()?(styles&pad_style()):0;pthread_mutex_unlock(&inputLock);return v;}
 static int pad_states(NpadState *out,int max,const uint32_t *id,uint32_t want_style);
-__attribute__((weak)) int runtime_vr_stick_pitch_locked(void){return 0;}   /* zeldaVR: game_patches_v143.c's when VR locks the pitch */
 static int full_states(NpadState *out,int max,const uint32_t *id){return pad_states(out,max,id,1);}
 static int handheld_states(NpadState *out,int max,const uint32_t *id){return pad_states(out,max,id,2);}
 static int pad_states(NpadState *out,int max,const uint32_t *id,uint32_t want_style){if(max<=0)return 0;if(id)input_log(want_style==2?"handheld state":"full-key state",*id);if(!out||!id)runtime_fail("controller output pointer");pthread_mutex_lock(&inputLock);NpadState state={.sampling=++sample};if(enabled&&allowed&&*id==pad_id()&&want_style==pad_style()&&(styles&want_style)){
@@ -161,7 +144,6 @@ static int pad_states(NpadState *out,int max,const uint32_t *id,uint32_t want_st
  if(pad.buttons&~padSeen||abs(pad.lx)>16384||abs(pad.ly)>16384||abs(pad.rx)>16384||abs(pad.ry)>16384)user_input("controller");padSeen=pad.buttons;
  if(abs(pad.lx)>abs(state.lx))state.lx=pad.lx;if(abs(pad.ly)>abs(state.ly))state.ly=pad.ly;
  if(abs(pad.rx)>abs(state.rx))state.rx=pad.rx;if(abs(pad.ry)>abs(state.ry))state.ry=pad.ry;
- if(runtime_vr_stick_pitch_locked())state.ry=0;   /* zeldaVR: up / down is the headset's (game_patches_v143.c) */
  }input_tape(&state.buttons,&state.lx,&state.ly,&state.rx,&state.ry);   /* OOT_INPUT_RECORD / OOT_INPUT_REPLAY (input_tape.h) */
  uint64_t trace=runtime_input_trace_next();if(trace)fprintf(stderr,"[oot-input-trace] %llu t=%llu guest id=%#x want=%#x styles=%#x enabled=%d allowed=%d ignored=%d sample=%lld attr=%#x buttons=%#llx axes=%d,%d,%d,%d\n",(unsigned long long)trace,(unsigned long long)runtime_now_ns(),*id,want_style,styles,enabled,allowed,ignore_user(),(long long)state.sampling,state.attributes,(unsigned long long)state.buttons,state.lx,state.ly,state.rx,state.ry);
  if(getenv("TOTK_INPUT_LOG")){static int left=120;static uint64_t previous;if(previous!=state.buttons&&left-->0){previous=state.buttons;fprintf(stderr,"[oot-input] id=%#x style=%#x enabled=%d allowed=%d buttons=%#llx sample=%lld\n",*id,styles,enabled,allowed,(unsigned long long)state.buttons,(long long)state.sampling); }}*out=state;pthread_mutex_unlock(&inputLock);return 1;}
@@ -257,8 +239,7 @@ void *runtime_input_override(const char *name){
 
 /* This game's own TOTK_INPUT_FILE commands; the shared runtime/input_file.h (below) runs the rest: settings <page> (the
    panel on that page, -1 closed; tests), ashot <path> and ashotn <n> <path with %d> (game frames written in the
-   background), and the diagnostics copied with games/totk's (resolution, Tears of the Kingdom 1.4.3's, zeldaVR's stereo
-   B2), which this game's switches leave out. 1: it was one. */
+   background), and the other game versions' diagnostics, which are compiled only for those games. 1: it was one. */
 static int input_game_command(char *line) {
     int page, used = 0;
     unsigned code = 0;
@@ -304,53 +285,19 @@ static int input_game_command(char *line) {
         int in_x = line[8] == 'x'; double secs; unsigned off = 0x10;
         if (sscanf(line + 9 + in_x, "%lf %x", &secs, &off) < 1 || secs <= 0 || off > 0x400 || off % 4) runtime_fail("frmwatch[x] <seconds> [hex offset, a multiple of 4]");
         runtime_diag_frm_watch(secs, off, in_x);
-    } else if (!strncmp(line, "linkwatch ", 10)) {   /* "linkwatch <seconds>": who writes his body's palette buffer field (VR) */
-        extern void runtime_diag_link_watch(double secs);
-        double secs = atof(line + 10); if (!(secs > 0 && secs <= 60)) runtime_fail("linkwatch takes 1 to 60 seconds");
-        runtime_diag_link_watch(secs);
-    } else if (!strncmp(line, "linkup", 6)) {   /* "linkup": who owns his palette buffers' descriptors, up to his actor (VR) */
-        extern void runtime_diag_link_up(void);
-        runtime_diag_link_up();
-    } else if (!strncmp(line, "linkheap", 8)) {   /* "linkheap": his actor's heap range and the palette buffers named in it (VR) */
-        extern void runtime_diag_link_heap(void);
-        runtime_diag_link_heap();
-    } else if (!strncmp(line, "linkscan", 8)) {   /* "linkscan": the pointers from the player's actor to his palette buffers (VR) */
-        extern void runtime_diag_link_scan(void);
-        runtime_diag_link_scan();
-    } else if (!strncmp(line, "camsrc ", 7)) {   /* "camsrc <seconds>": which cameras the per-view record copies (VR) */
-        extern void runtime_diag_cam_src(double secs);
-        double secs = atof(line + 7); if (!(secs > 0 && secs <= 120)) runtime_fail("camsrc takes 1 to 120 seconds");
-        runtime_diag_cam_src(secs);
-    } else if (!strncmp(line, "watchw ", 7) || !strncmp(line, "watchr ", 7)) {   /* "watchw|watchr <hex address> <seconds>": who writes / reads those 4 bytes (VR stereo RE) */
+    } else if (!strncmp(line, "watchw ", 7) || !strncmp(line, "watchr ", 7)) {   /* "watchw|watchr <hex address> <seconds>": who writes / reads those 4 bytes */
         extern void runtime_diag_watch_write(uint64_t addr, int secs, int load);
         char *e; uint64_t a = strtoull(line + 7, &e, 16); runtime_diag_watch_write(a, (int)strtol(e, NULL, 10), line[5] == 'r');
-    } else if (!strncmp(line, "bpvals ", 7)) {   /* "bpvals <hex main offset> <register> <seconds>": the register's values there (VR stereo RE) */
+    } else if (!strncmp(line, "bpvals ", 7)) {   /* "bpvals <hex main offset> <register> <seconds>": the register's values there */
         extern void runtime_diag_bp_vals(uint64_t off, int reg, double secs);
         char *e; uint64_t o = strtoull(line + 7, &e, 16); char *e2; long r = strtol(e, &e2, 10); runtime_diag_bp_vals(o, (int)r, strtod(e2, NULL));
-    } else if (!strncmp(line, "bpregs ", 7)) {   /* "bpregs <hex main offset>": registers at the first hit (VR stereo RE) */
+    } else if (!strncmp(line, "bpregs ", 7)) {   /* "bpregs <hex main offset>": registers at the first hit */
         extern void runtime_diag_bp_regs(uint64_t off);
         extern void runtime_diag_bp_regs_if(uint64_t off, int reg, uint64_t lo, uint64_t hi);
         char *e; uint64_t o = strtoull(line + 7, &e, 16); char *e2; long r = strtol(e, &e2, 10);
         if (e2 != e) { char *e3; uint64_t lo = strtoull(e2, &e3, 16); runtime_diag_bp_regs_if(o, (int)r, lo, strtoull(e3, NULL, 16)); }   /* "bpregs <off> <reg> <lo> <hi>": only when x<reg> is in [lo, hi) */
         else runtime_diag_bp_regs(o);
-    } else if (!strncmp(line, "b2pair", 6)) {   /* "b2pair": first / second run recordings paired by identity (stereo B2 diagnostic) */
-        extern void runtime_vr_b2_pair(void);
-        runtime_vr_b2_pair();
-    } else if (!strncmp(line, "b2slots", 7)) {   /* "b2slots": where the game keeps the runs' handles (stereo B2 diagnostic) */
-        extern void runtime_vr_b2_slots(void);
-        runtime_vr_b2_slots();
-    } else if (!strncmp(line, "b2calls", 7)) {   /* "b2calls": the next frame's calls of the runs' recordings (stereo B2 diagnostic) */
-        extern void runtime_vr_b2_calls(void);
-        runtime_vr_b2_calls();
-    } else if (!strncmp(line, "b2eye ", 6)) {   /* "b2eye <mm>": half the eye distance for stereo B2 (diagnostic until the VR thread sets it) */
-        extern void runtime_vr_b2_eye(float mm);
-        runtime_vr_b2_eye((float)atof(line + 6));
-    } else if (!strncmp(line, "b2 ", 3)) {   /* "b2 <0|1|2|3> [mask]": zeldaVR stereo B2, the second render run per game update (game_patches_v143.c) */
-        extern void runtime_vr_b2(int on);
-        extern void runtime_vr_b2_mask(unsigned m);
-        char *e; long mode = strtol(line + 3, &e, 10); if (*e == ' ') runtime_vr_b2_mask((unsigned)strtoul(e, NULL, 0));
-        runtime_vr_b2((int)mode);
-    } else if (!strncmp(line, "dumpmain ", 9)) {   /* "dumpmain <file>": main's loaded image, relocated (VR stereo RE) */
+    } else if (!strncmp(line, "dumpmain ", 9)) {   /* "dumpmain <file>": main's loaded image, relocated */
         extern void runtime_diag_dump_main(const char *path);
         char path[1024]; snprintf(path, sizeof path, "%s", line + 9); path[strcspn(path, "\r\n")] = 0;
         runtime_diag_dump_main(path);
@@ -358,21 +305,17 @@ static int input_game_command(char *line) {
         extern void runtime_diag_peek(uint64_t a, int n, int rel);
         const int rel = line[4] == 'm'; char *e; uint64_t a = strtoull(line + (rel ? 6 : 5), &e, 16);
         runtime_diag_peek(a, (int)strtol(e, NULL, 10), rel);
-    } else if (!strncmp(line, "calctree", 8)) {   /* "calctree": the method tree the frame's calc walks (VR stereo) */
+    } else if (!strncmp(line, "calctree", 8)) {   /* "calctree": the method tree the frame's calc walks */
         extern void runtime_diag_calc_tree(void);
         runtime_diag_calc_tree();
-    } else if (!strncmp(line, "jobdump", 7)) {   /* "jobdump": the jobs of the frame's render job lists (VR stereo) */
+    } else if (!strncmp(line, "jobdump", 7)) {   /* "jobdump": the jobs of the frame's render job lists */
         extern void runtime_diag_job_dump(void);
         runtime_diag_job_dump();
-    } else if (!strncmp(line, "frametrace ", 11)) {   /* "frametrace <seconds> <hex offset>...": threads and call chains per frame (VR) */
+    } else if (!strncmp(line, "frametrace ", 11)) {   /* "frametrace <seconds> <hex offset>...": threads and call chains per frame */
         extern void runtime_diag_frame_trace(double secs, const char *offs);
         char *rest; double secs = strtod(line + 11, &rest); if (!(secs > 0 && secs <= 30)) runtime_fail("frametrace takes 1 to 30 seconds and up to 4 hex offsets in main");
         while (*rest == ' ') rest++;
         runtime_diag_frame_trace(secs, rest);
-    } else if (!strncmp(line, "camwatch ", 9)) {   /* "camwatch <seconds>": who writes the main camera's matrix (VR) */
-        extern void runtime_diag_cam_watch(double secs, int src);   /* "camwatch <seconds> src": camsrc's copy source instead */
-        double secs = atof(line + 9); if (!(secs > 0 && secs <= 120)) runtime_fail("camwatch takes 1 to 120 seconds [src]");
-        runtime_diag_cam_watch(secs, strstr(line + 9, "src") != NULL);
     } else if (!strncmp(line, "xpoke ", 6)) {   /* "xpoke <hex offset> <value>": a float into the game's time object */
         extern void runtime_diag_xpoke(unsigned off, float value);
         unsigned off; float value; if (sscanf(line + 6, "%x %f", &off, &value) != 2 || off > 0x400 || off % 4) runtime_fail("xpoke <hex offset, a multiple of 4> <value>");
@@ -389,13 +332,11 @@ static int input_game_flag(const char *name, int v) {
     else if (!strcmp(name,"oot_internal_res")) { extern void runtime_oot_internal_res_set(int); runtime_oot_internal_res_set(v); }   /* what the settings panel's resolution row does */
     else if (!strcmp(name,"oot_scale")) { extern void runtime_oot_scale_set(float); runtime_oot_scale_set((float)v / 10000.0f); }   /* render scale * 10000, at once */
     else if (!strcmp(name,"oot_canvas")) { extern void runtime_oot_canvas_set(int,int); runtime_oot_canvas_set(v,1); }   /* what the settings panel's resolution row does */
-    else if (!strcmp(name,"vr_canvas")) { extern void runtime_oot_vr_canvas(unsigned,unsigned); runtime_oot_vr_canvas((unsigned)v/10000,(unsigned)v%10000); }   /* diagnostic: VR's canvas, width*10000+height */
     else if (!strcmp(name,"oot_output")) { extern void runtime_oot_output_size_set(unsigned,unsigned); runtime_oot_output_size_set((unsigned)v/10000,(unsigned)v%10000); }   /* width*10000+height; 0 = the game's */
     else if (!strcmp(name,"oot_profile")) { extern void runtime_operation_mode_choose(int,int); runtime_operation_mode_choose(!v,1); }   /* what the settings panel's quality profile row does: 0 docked, 1 handheld */
     else if (!strcmp(name,"oot_opmode")) { extern void runtime_operation_mode_report(int); runtime_operation_mode_report(v); }
 #endif
     else if (!strcmp(name,"yield_backoff")) { extern void runtime_yield_backoff_set(int,int); runtime_yield_backoff_set(v,-1); }   /* µs a polling thread sleeps at most (0 = off; threads.c yield_backoff_ns) */
-    else if (!strcmp(name,"vr_noturn") || !strcmp(name,"vr_fovdeg") || !strcmp(name,"vr_lodk") || !strcmp(name,"vr_blade_kind") || !strcmp(name,"vr_blade_suspend")) { extern void runtime_oot_vr_debug(const char *, int) __attribute__((weak)); if (runtime_oot_vr_debug) runtime_oot_vr_debug(name, v); }   /* oot_vr.h diagnostics */
     else if (!strcmp(name,"yield_fast")) { extern void runtime_yield_fast_set(int); runtime_yield_fast_set(v); }
     else if (!strcmp(name,"yield_start")) { extern void runtime_yield_backoff_set(int,int); runtime_yield_backoff_set(-1,v); }   /* µs of yields before the first sleep */
     else if (!strcmp(name,"fps_lock")) { extern void nvn_fps_lock_set(int); nvn_fps_lock_set(v); }   /* the frame lock (0 = off), as the settings panel's row: one run can try every lock */

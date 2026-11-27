@@ -1,7 +1,4 @@
-"""A listed render pipeline never carries the host bits (nvn_pso_skey.h PSO_HOST_BITS: the VR host's own vertex function,
-built in play, never archived or listed). 2026-11-13: Ocarina of Time's list holds 69 rows with a2c bit 6, recorded when the
-bit meant nothing; on the shared layer the pipeline archive built them as VR host pipelines and stopped ("Labo VR vertex
-function is unavailable"). pso_skey_parse refuses such a row; the other a2c bits still parse."""
+"""The pipeline parser rejects the former headset renderer's bits in existing lists."""
 from pathlib import Path
 import re
 import shutil
@@ -52,20 +49,16 @@ class HostBits(unittest.TestCase):
                 else:
                     self.assertEqual((result, back), (0, bits))
 
-    def test_host_pipelines_are_not_recorded(self):
-        # nor written to pso_user.tsv / the contributions by a VR session (pso_adopt), nor their tile-read (T) rows
+    def test_hdr_pipelines_are_kept_out_of_shared_lists(self):
         text = (NVN / 'nvn_mtl.m').read_text()
         adopt = text.split('static void pso_adopt(', 1)[1].split('\n}', 1)[0]
         adopt = re.sub(r'//[^\n]*', '', adopt)
-        guard = re.search(r'if\s*\(k->a2c & \(PSO_HDR \| PSO_HOST_BITS\)\)\s*\{([^{}]*)\}', adopt)
-        self.assertIsNotNone(guard, 'pso_adopt must handle HDR and host pipelines before recording')
+        guard = re.search(r'if \(k->a2c & PSO_HDR\) \{([^{}]*)\}', adopt)
+        self.assertIsNotNone(guard)
         self.assertRegex(guard[1], r'hm_put_id\(&g_pso, k, ps\);\s*g_pso_gen\+\+;')
         self.assertTrue(guard[1].strip().endswith('return;'))
         for record in ('pso_record(', 'pso_user_record(', 'pso_contribute('):
             self.assertGreater(adopt.index(record), guard.end())
-        self.assertTrue('!(k.a2c & (PSO_VBORDER | PSO_HOST_BITS))' in text,
-                        'tile-read rows must exclude host pipelines')
-
 
 if __name__ == '__main__':
     unittest.main()

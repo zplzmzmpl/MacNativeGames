@@ -23,7 +23,7 @@ Thanks for helping. This page says how the project works and what a pull request
 ## Repository layout
 
 - `games/oot` holds the Ocarina of Time runtime, game-specific tests, and build scripts. Record the origins of upstream copies in [third_party/COPIES.md](games/oot/third_party/COPIES.md).
-- Ocarina of Time links to the shared NVN backend in `games/totk/third_party/d2r_gfx` and reuses code from `shared/` and `zeldaVR/`. Keep those paths intact when synchronizing upstream changes.
+- Ocarina of Time links to the shared NVN backend in `games/totk/third_party/d2r_gfx` and reuses code from `shared/`. Keep those paths intact and skip VR integration when synchronizing upstream changes.
 - The build and update entry points are `build_app.py` and `update_runtime.py`. The jobs in `tools/builder_jobs/` expose them to Launcher. Run `make check` for the shared and Ocarina regression suite.
 
 ## Picture quality and performance
@@ -74,7 +74,7 @@ Thanks for helping. This page says how the project works and what a pull request
 ## 仓库结构
 
 - `games/oot` 保存《时之笛》的运行时、游戏专用测试和构建脚本。来自上游的源码在 [third_party/COPIES.md](games/oot/third_party/COPIES.md) 记录来源。
-- 《时之笛》链接 `games/totk/third_party/d2r_gfx` 下的共享 NVN 后端，并使用 `shared/` 和 `zeldaVR/` 里的组件。同步上游时保留这些路径。
+- 《时之笛》链接 `games/totk/third_party/d2r_gfx` 下的共享 NVN 后端，并使用 `shared/` 里的组件。同步上游时保留这些路径，跳过 VR 集成。
 - `build_app.py` 和 `update_runtime.py` 是构建和更新入口，Launcher 通过 `tools/builder_jobs/` 调用。用 `make check` 跑《时之笛》和共享组件的回归测试。
 
 ## 画质与性能
