@@ -21,17 +21,21 @@ class InputTape(unittest.TestCase):
             exe, tape = Path(d) / 'probe', Path(d) / 'route.tape'
             subprocess.run(['xcrun', 'clang', '-std=c11', '-Wall', '-Wextra', '-Werror', '-I', str(RUNTIME),
                             str(ROOT / 'tests/oot_input_tape_probe.c'), '-o', str(exe)], check=True)
-            env = dict(os.environ, OOT_INPUT_RECORD=str(tape))
+            # Use the OOT name to record, with another path set through the shared alias.
+            clean = {k: v for k, v in os.environ.items() if not k.startswith(('OOT_INPUT_', 'TOTK_INPUT_'))}
+            env = dict(clean, OOT_INPUT_RECORD=str(tape), TOTK_INPUT_RECORD=str(tape.with_suffix('.unused')))
             subprocess.run([str(exe), 'record'], env=env, check=True, capture_output=True)
             lines = [l for l in tape.read_text().splitlines() if l and not l.startswith('#')]
             self.assertIn('B 10 1 0 0 0 0', lines)          # the title's button, by frames since the start
             self.assertIn('W 0 0 0 0 0 0', lines)           # the state again where the world begins
             self.assertIn('W 5 0 20000 0 0 0', lines)       # walking, by frames since the world began
             self.assertIn('H W 600', lines)                 # a heartbeat every 600 frames
-            env = dict(os.environ, OOT_INPUT_REPLAY=str(tape))
-            run = subprocess.run([str(exe), 'replay'], env=env, capture_output=True, text=True)
-            self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
-            self.assertIn('closed at frame', run.stdout)
+            for variable in ('OOT_INPUT_REPLAY', 'TOTK_INPUT_REPLAY'):
+                with self.subTest(variable=variable):
+                    env = dict(clean, **{variable: str(tape)})
+                    run = subprocess.run([str(exe), 'replay'], env=env, capture_output=True, text=True)
+                    self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+                    self.assertIn('closed at frame', run.stdout)
 
     def test_the_game_reads_the_tape_and_notes_the_world(self):
         source = (RUNTIME / 'input.c').read_text()
