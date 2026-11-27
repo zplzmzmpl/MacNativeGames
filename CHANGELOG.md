@@ -1,5 +1,14 @@
 # 更新记录
 
+## 2026-11-27 · 《时之笛》上游同步
+
+- **VR。** 合入随手部动作判定的剑刃命中、双手瞄准、手腕状态面板、道具轮盘和舒适遮罩。ARM64 探针覆盖了运行时钩子和交互计算，头显实机验证待完成。 [上游 VR 改动](https://github.com/ly05010419/MacNativeGames/commit/9c2554bc7452aa6dad1e106fb2c79b4862fe7146)
+- **水面与着色器。** 水面模拟在 60 FPS 以上仍执行子步，暂停时保持零步。着色器翻译子进程从空信号掩码和默认信号处理方式启动。 [水面 PR](https://github.com/ly05010419/MacNativeGames/pull/2400) · [信号 PR](https://github.com/ly05010419/MacNativeGames/pull/2384)
+- **macOS 26 打包。** 《时之笛》运行时和管线资源工具固定以 26.0 为最低版本，打包时核对 Mach-O 版本和离线 libvpx 的 NEON 实现。Launcher 使用离线包中登记的依赖替换本机过期缓存。 [上游打包改动](https://github.com/ly05010419/MacNativeGames/commit/17416fee1a8ab3e74042fb15cbca765cda609d88)
+- **路线录制。** 《时之笛》改用共享的手柄录制和回放代码，继续优先读取 `OOT_INPUT_*`，也支持上游的 `TOTK_INPUT_*` 别名。 [路线录制 PR](https://github.com/ly05010419/MacNativeGames/pull/2402)
+
+[Issue #2](https://github.com/zplzmzmpl/MacNativeGames/issues/2) 同时命中了《动物森友会》的岛屿账户支持。相关账户分支和该分支所需的上游测试补丁不适用于本 fork。
+
 ## 2026-11-26 · GitHub 回归检查
 
 - 只改 Markdown 的推送和 PR 跳过 macOS 回归。包含代码或其他文件改动时仍会触发，Actions 页面也可以手动运行全套检查。对同一分支和同一触发事件，新运行会取消已被替代的旧运行。 [触发配置](.github/workflows/tests.yml)
