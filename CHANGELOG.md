@@ -9,6 +9,11 @@
 
 [Issue #2](https://github.com/zplzmzmpl/MacNativeGames/issues/2) 同时命中了《动物森友会》的岛屿账户支持。相关账户分支和该分支所需的上游测试补丁不适用于本 fork。
 
+### 本机版 Launcher 1.1.9
+
+- 随附本次同步的源码、`oot-native` 和 `oot-pool-sources-list`，沿用现有 Launcher 界面和离线依赖包。Launcher 更新完成后，可按需从游戏卡片应用新运行时。 [本机 Launcher 构建方法](README.md#构建本机版-launcher)
+- Python 回归共 1,026 项，含复测 1,009 项通过、17 项跳过，另有 14 项 C 检查通过。 [仓库测试入口](Makefile#L41)
+
 ## 2026-11-26 · GitHub 回归检查
 
 - 只改 Markdown 的推送和 PR 跳过 macOS 回归。包含代码或其他文件改动时仍会触发，Actions 页面也可以手动运行全套检查。对同一分支和同一触发事件，新运行会取消已被替代的旧运行。 [触发配置](.github/workflows/tests.yml)
