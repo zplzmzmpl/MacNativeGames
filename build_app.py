@@ -2935,7 +2935,7 @@ def record_ns2_device_build(tree, out, g, args):
                   source_sha256={str(p.relative_to(tree)): sha256(p) for p in sorted(sources) if p.is_file()},
                   output_sha256={str(p): sha256(p) for p in sorted(set(outputs))})
     icon_spec = g['folder'] / 'assets/app-icon.json'
-    if icon_spec.is_file():
+    if icon_spec.is_file() and (tree / 'build/AppIcon.icns').is_file():
         record['app_icon'] = dict(source=json.loads(icon_spec.read_text()), source_spec_sha256=sha256(icon_spec),
                                   icns_sha256=sha256(tree / 'build/AppIcon.icns'))
     out.with_name(out.stem + '-build-record.json').write_text(json.dumps(record, indent=2) + '\n')

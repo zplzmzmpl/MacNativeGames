@@ -884,6 +884,17 @@ def prepare_fonts(fonts, given=None, make=None):
     return (f'none given: open-source Noto fonts (SIL OFL 1.1) from {made}; '
             'give --shared-fonts with the firmware fonts of a Tears of the Kingdom or Breath of the Wild build to use those')
 
+def prepare_app_icon(py, tree, run):
+    icon_spec = GAME / 'assets/app-icon.json'
+    if not icon_spec.is_file():
+        return
+    try:
+        run([py, 'scripts/extract_app_icon.py', '--source-spec', icon_spec, '--output', 'build/AppIcon.icns'], 'app-icon')
+    except subprocess.CalledProcessError:
+        # A reused work directory may still have an icon from a different pin or an incomplete conversion.
+        (tree / 'build/AppIcon.icns').unlink(missing_ok=True)
+        print('   no app icon, the app gets the default one (logs/app-icon.log says why)', flush=True)
+
 def build(args, source):
     if args.platform not in ('macos','ios'):raise ValueError('Ocarina of Time has macOS and iOS build paths only')
     device=args.platform=='ios'
@@ -966,8 +977,7 @@ def build(args, source):
     (tree/'build/shader-map.tsv').write_text('# TOTK control-code-sha256-v1\n')
     print('native-runtime',flush=True)
     build_runtime(work,logs/'native-runtime.log',2,env)
-    icon_spec=GAME/'assets/app-icon.json'   # the dump has no Control data: the pinned official image, as Donkey Kong Bananza
-    if icon_spec.is_file():run([py,'scripts/extract_app_icon.py','--source-spec',icon_spec,'--output','build/AppIcon.icns'],'app-icon')
+    prepare_app_icon(py, tree, run)   # the dump has no Control data: use the pinned official image when available
     mode='full' if device else shader_mode()
     if mode=='none':print('Shaders are not bundled (OOT_BUNDLE_SHADERS=0): translated at first use',flush=True)
     else:
