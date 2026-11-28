@@ -58,6 +58,15 @@ jobs:
             build_app.py update_runtime.py shader_update.py
             tools/deps tools/builder tools/builder_jobs tools/prebuilt.py tools/launcher_source.py
             ':(glob)tests/test_oot_*'
+            # Ignore headset-only sources that upstream keeps in the watched directories.
+            ':(exclude)games/oot/zeldaVR'
+            ':(exclude,glob)games/oot/runtime/oot_vr*'
+            ':(exclude)games/oot/scripts/make_vr_rig.py'
+            ':(exclude,glob)games/oot/tests/oot_vr_*'
+            ':(exclude,glob)games/totk/third_party/d2r_gfx/gfx/nvn/oot_vr_*.inc'
+            ':(exclude,glob)tests/test_oot_vr_*'
+            ':(exclude,glob)tests/test_oot_bfres.*'
+            ':(exclude,glob)tests/test_oot_gamedata.*'
             ':(exclude)games/totk/third_party/d2r_gfx/gfx/nvn/botw_finish.h'
             ':(exclude)games/totk/third_party/d2r_gfx/gfx/nvn/totk_fxaa_quality.h'
             ':(exclude)games/totk/third_party/d2r_gfx/gfx/nvn/totk_smaa.h'
