@@ -42,7 +42,7 @@ def main(argv):
         return tab(a.tab, a.action, a.app, a.args)
     if a.job == 'apps':
         from tools.builder_jobs.installed import apps
-        print(json.dumps({'apps': apps(a.apps_dir)}, ensure_ascii=False))
+        print(json.dumps({'apps': apps(a.apps_dir, check_current=True)}, ensure_ascii=False))
         return 0
     from tools.builder_jobs.build_job import main as build
     return build(a.request, a.history)

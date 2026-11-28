@@ -566,7 +566,7 @@ def check_translator(tree,mode):
         raise ValueError(f"the App's shader translator {service} ({(have or 'missing')[:12]}) is not the one its seed was "
                          f"translated with ({(want or 'not recorded')[:12]}, {manifest}): not packaged")
 
-def package_app(work,tree,out,game_data_mode='app',game_data_folder=None,shared=None,mode=None):
+def package_app(work,tree,out,game_data_mode='app',game_data_folder=None,shared=None,mode=None,*,runtime_commit=None):
     """Stage a sealed App containing its runtime data, then replace the closed App. mode: shader_mode, recorded in the
     App (MNGShaders) for its updates and MNG Launcher."""
     mode=mode or shader_mode()
@@ -577,6 +577,8 @@ def package_app(work,tree,out,game_data_mode='app',game_data_folder=None,shared=
     if shader_record:check_translator(tree,mode)   # never an App whose in-game translator is not its seed's
     took('shader resources checked')
     suffix=shader_dirs(tree,mode)[2]
+    shared=Path(shared) if shared else tree/'assets/shader_list.tsv'
+    list_sha=sha(shared)
     lists=resolve_lists(tree,tree/f'build/warm-lists{suffix}',work/'logs',shared,mode)   # one resolve of the current list: the archive and the App's build/ use it
     took('warm-up lists resolved')
     c1=c1_list(tree,mode) if shader_record else None
@@ -652,9 +654,10 @@ def package_app(work,tree,out,game_data_mode='app',game_data_folder=None,shared=
     info['NSMicrophoneUsageDescription']=MICROPHONE_USAGE
     if game_data_mode=='library':info['MNGGameDataFolder']=str(game_data_folder)
     info['MNGShaders']=mode   # shader_mode: 'title' is a quick build, filled in by MNG Launcher's 补全着色器 (update_shaders)
+    if shader_record:info['MNGShaderListSHA256']=list_sha
     info['MNGContributionFolder']=str(contrib_folder())   # app/launcher.m contrib_file: where players find it, as build_app.py sets it
     build_app.record_update_source(info,work)   # Settings > Update (#2055): the checkout, the work folder and the Python, as build_app.py records them
-    commit=build_app.source_commit()
+    commit=build_app.source_commit() if runtime_commit is None else runtime_commit
     if commit:info['MNGSourceCommit']=commit   # the HUD box and the Update page name the commit the app was built from
     build_app.record_launcher_version(info)    # the HUD's build line: the Launcher that built the app, before the commit
     (temporary/'Contents/Info.plist').write_bytes(plistlib.dumps(info));(temporary/'Contents/PkgInfo').write_bytes(b'APPL????')
@@ -820,8 +823,10 @@ def update_shaders(app,listfile,work=None):
         with (logs/(name+'.log')).open('w') as f:subprocess.run([str(x)for x in cmd],cwd=cwd,env=env,stdout=f,stderr=subprocess.STDOUT,check=True)
     install_translator(tree)   # the App's in-game translator is the one the seed is checked against above
     shader_steps(work,tree,logs,run,shared=listfile)   # every shader: a quick App becomes a full one (补全着色器)
-    folder=plistlib.loads((app/'Contents/Info.plist').read_bytes()).get('MNGGameDataFolder')
-    package_app(work,tree,app,'library' if folder else 'app',folder,shared=listfile,mode='full')
+    info=plistlib.loads((app/'Contents/Info.plist').read_bytes())
+    folder=info.get('MNGGameDataFolder')
+    package_app(work,tree,app,'library' if folder else 'app',folder,shared=listfile,mode='full',
+                runtime_commit=info.get('MNGSourceCommit') or '')
     print(f'updated the shaders of {app} in {time.monotonic()-start:.0f} s',flush=True)
 
 def shader_steps(work,tree,logs,run,device=False,shared=None,mode='full'):

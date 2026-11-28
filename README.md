@@ -70,8 +70,10 @@ codesign --verify --deep --strict "$app"
 
 ## 上游同步与维护
 
+**维护范围。** 本仓库只维护 macOS 桌面版《时之笛》。上游同步只审查并合入影响《时之笛》的改动，包括它实际使用的共享运行时和构建工具。与《时之笛》无关的改动可跳过审查和合并。
+
 1. **工作流检查上游并创建 Issue。** GitHub Actions 每天北京时间 09:17 检查上游 `main`。命中《时之笛》或相关的共享运行时、构建工具改动时，工作流会在本 fork 创建 Issue，附上比较范围和相关提交，并提醒维护者。 [上游监测工作流](https://github.com/zplzmzmpl/MacNativeGames/actions/workflows/watch-oot-upstream.yml)
-2. **处理 Issue 并融合代码。** 逐项核对上游提交和本 fork 的差异，将适用于《时之笛》的改动合入本仓库，运行 `make check` 和改动涉及的专项测试。
+2. **处理 Issue 并融合代码。** 核对上游提交中与《时之笛》相关的部分，合入适用的改动，运行 `make check` 和改动涉及的专项测试。
 3. **记录更新并回复 Issue。** 在 `CHANGELOG.md` 记录融合范围、取舍和验证结果。在原 Issue 回复处理结果，注明已处理并附上相关提交。 [更新记录](CHANGELOG.md)
 4. **构建并替换本机 Launcher。** 从本次同步的 Git 提交构建新版 Launcher，核对签名和内置资源后，备份并替换 `/Applications/MNG Launcher.app`。打开新版确认能启动且版本正确，再清理构建文件和旧版备份。 [本机 Launcher 构建步骤](#构建本机版-launcher)
 

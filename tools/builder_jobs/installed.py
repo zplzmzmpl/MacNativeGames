@@ -5,7 +5,7 @@ game is updated in place, with the work folder it records, by the fastest update
 
 Contract: apps(apps_dir) returns a list of dicts {app, name, game, version, kind, reason, work, commit, shaders}; it never
 raises. shaders is the App's MNGShaders: 'title' for a quick App (only the title's shaders), else 'full'.
-kind is express, fast, full or error (update_runtime.plan)."""
+kind is express, fast, full, current (for the Launcher card) or error (update_runtime.plan)."""
 from concurrent.futures import ThreadPoolExecutor
 import json
 import os
@@ -74,11 +74,16 @@ def usable(path):
             and (p / 'Contents/Info.plist').is_file())
 
 
-def plan(app, python=sys.executable, work=None, env=None):
+def plan(app, python=sys.executable, work=None, env=None, *, check_current=False):
     """update_runtime.py --plan for one app (with --work when given, in env when given: a quick start asks with
     OOT_SHADERS=title), or an 'error' plan saying why it could not be asked."""
     try:
-        done = subprocess.run([python, str(repo.UPDATE_RUNTIME), str(app), '--plan'] + (['--work', str(work)] if work else []),
+        argv = [python, str(repo.UPDATE_RUNTIME), str(app), '--plan']
+        if work:
+            argv += ['--work', str(work)]
+        if check_current:
+            argv.append('--check-current')
+        done = subprocess.run(argv,
                               cwd=repo.REPO, capture_output=True, env=env,
                               text=True, timeout=300)
         return json.loads(done.stdout.strip().splitlines()[-1])
@@ -140,7 +145,7 @@ def neighbours(paths):
     return out
 
 
-def apps(apps_dir=None, python=sys.executable, known_file=KNOWN):
+def apps(apps_dir=None, python=sys.executable, known_file=KNOWN, *, check_current=False):
     """The Launcher's own list first, then its apps folder, then what macOS knows (LaunchServices), then the apps next
     to any of those; what is found is remembered."""
     ids = bundle_ids()
@@ -162,7 +167,7 @@ def apps(apps_dir=None, python=sys.executable, known_file=KNOWN):
             found[real] = info
     # each app's plan is its own process and reads only its own app: asked at the same time
     with ThreadPoolExecutor(max_workers=max(1, min(8, len(found)))) as pool:
-        plans = dict(zip(found, pool.map(lambda real: plan(real, python), found)))
+        plans = dict(zip(found, pool.map(lambda real: plan(real, python, check_current=check_current), found)))
     out = [{'app': real, 'name': info.get('CFBundleDisplayName') or info.get('CFBundleName') or Path(real).stem,
             'game': plans[real].get('game'),
             'version': plans[real].get('display_version') or info.get('CFBundleShortVersionString'),

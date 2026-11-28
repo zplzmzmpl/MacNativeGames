@@ -599,12 +599,28 @@ def oot_update_blocker(folder, app=None, remake=False):
     return module.update_blocker(folder, module.shader_mode(app) if app is not None else 'full', remake=remake)
 
 
-def plan(app, work=None):
+def oot_inputs_current(info):
+    """Compare the installed inputs with the ones a bundled Launcher will use."""
+    if not (build_app.REPO / '.mng-source-commit').is_file():
+        return False   # a checkout can fetch a newer shader list when the update starts
+    commit = build_app.source_commit()
+    digest = info.get('MNGShaderListSHA256')
+    if not commit or info.get('MNGSourceCommit') != commit or not digest:
+        return False
+    from shader_update import LISTS
+    try:
+        return digest == sha256(build_app.REPO / LISTS['oot'])
+    except OSError:
+        return False
+
+
+def plan(app, work=None, *, check_current=False):
     """Which of the three updates the app needs, found by the checks main() makes before it touches anything, and nothing
     is changed (--plan; MNG Launcher runs the fastest that fits, user 2026-11-12: "不要用最慢的形式打包"):
       express  update_runtime.py "<app>"         no game files or keys
       fast     update_runtime.py "<app>" --seed  new startup shaders from the work folder's files
       full     build_app.py with the game files and keys
+      current  the Launcher already installed these inputs (when check_current is requested)
       error    the app records a work folder on a disk that is not connected, or an Ocarina of Time app on a Mac
                without Xcode's Metal compiler (reason says what to do)
     with the reason in words, the game, its version and the work folder."""
@@ -612,12 +628,12 @@ def plan(app, work=None):
     def result(kind, reason, **extra):
         return {'app': str(app), 'kind': kind, 'reason': reason, **extra}
     try:
-        executable = plistlib.loads((app / 'Contents/Info.plist').read_bytes()).get('CFBundleExecutable')
+        info = plistlib.loads((app / 'Contents/Info.plist').read_bytes())
     except (OSError, ValueError):
         return result('full', f'{app.name} is not a Mac app (no readable Contents/Info.plist)')
     def work_folder(name):
         return (Path(work).expanduser().resolve(), 'given') if work else build_app.recorded_work_folder(app, name)
-    if executable != 'OcarinaOfTime':
+    if info.get('CFBundleExecutable') != 'OcarinaOfTime':
         return result('error', 'This fork updates only Ocarina of Time')
     try:
         folder, why = work_folder('OcarinaOfTime_build')
@@ -632,11 +648,17 @@ def plan(app, work=None):
     blocker = oot_update_blocker(folder, app)   # the checks its update makes before it touches anything
     # a new translation chain or translator: the work folder translates every shader again, no game files or keys
     # (the fast update; user 2026-11-17: "oot 加上"); only what that cannot mend needs the full build
-    if blocker and not oot_update_blocker(folder, app, remake=True):
+    fast = bool(blocker and not oot_update_blocker(folder, app, remake=True))
+    if blocker and not fast:
+        return result('full', f'Ocarina of Time: {blocker}', game='oot', work=str(folder), work_why=why)
+    if check_current and oot_inputs_current(info):
+        from tools.builder_jobs.text import t
+        return result('current', t('Up to date. The current source, shaders and pipelines are installed.',
+                                   '已是最新，当前源码、着色器和管线清单均已应用。'),
+                      game='oot', work=str(folder), work_why=why)
+    if fast:
         return result('fast', 'Ocarina of Time: the startup shaders are of another translation chain or translator: every shader '
                       'is translated again from the work folder (no game files or keys)', game='oot', work=str(folder), work_why=why)
-    if blocker:
-        return result('full', f'Ocarina of Time: {blocker}', game='oot', work=str(folder), work_why=why)
     return result('express', 'Ocarina of Time: its shaders are of this repository\'s translation chain and its modules this repository\'s rewrites',
                   game='oot', work=str(folder), work_why=why)
 
@@ -666,11 +688,12 @@ def main(argv):
     ap.add_argument('app', type=Path, help='the installed Ocarina of Time app')
     ap.add_argument('--work', type=Path, help='override the work folder recorded by the app')
     ap.add_argument('--plan', action='store_true', help='report which update fits as JSON without changing the app')
+    ap.add_argument('--check-current', action='store_true', help='with --plan, report a current app as up to date')
     ap.add_argument('--seed', action='store_true', help='translate the startup shaders again from the verified work folder')
     ap.add_argument('--list', type=Path, help='override the shared shader list')
     args = ap.parse_args(argv)
     if args.plan:
-        print(json.dumps(plan(args.app, args.work), ensure_ascii=False))
+        print(json.dumps(plan(args.app, args.work, check_current=args.check_current), ensure_ascii=False))
         return
     app = args.app.expanduser().resolve()
     if not ocarina_app(app):

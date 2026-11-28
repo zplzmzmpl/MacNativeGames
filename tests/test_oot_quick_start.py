@@ -260,7 +260,7 @@ class ShaderMode(unittest.TestCase):
     def test_the_app_records_its_mode_and_shader_fill_makes_it_full(self):
         text = (GAME / 'build.py').read_text()
         self.assertIn("info['MNGShaders']=mode", text)
-        self.assertIn("package_app(work,tree,app,'library' if folder else 'app',folder,shared=listfile,mode='full')", text)
+        self.assertIn("package_app(work,tree,app,'library' if folder else 'app',folder,shared=listfile,mode='full',", text)
 
 
 class QuickAppContributesNothing(unittest.TestCase):
@@ -310,8 +310,8 @@ class LauncherQuickStart(unittest.TestCase):
         # user 2026-11-15: the card's 快速启动 and the Build page's switch are one function; an installed app whose
         # translator changed (a full build otherwise) takes it as an update that makes only the title's shaders
         seen = {}
-        def plan(app, python, work=None, env=None):
-            seen['env'] = env
+        def plan(app, python, work=None, env=None, *, check_current=False):
+            seen.update(env=env, check_current=check_current)
             return {'kind': 'express', 'work': '/w', 'game': 'oot'}
         with tempfile.TemporaryDirectory() as tmp:
             app = Path(tmp) / 'Ocarina of Time.app'
@@ -320,9 +320,11 @@ class LauncherQuickStart(unittest.TestCase):
             with mock.patch('tools.builder_jobs.installed.plan', plan), mock.patch.dict(os.environ, {'OOT_SHADERS': ''}):
                 _, _, _, _, kind, game = self.build_job.command({'update': str(app), 'quick': True})
                 self.assertEqual(seen['env']['OOT_SHADERS'], 'title')
+                self.assertFalse(seen['check_current'])
                 self.assertEqual((kind, game), ('express', 'oot'))
                 self.build_job.command({'update': str(app)})
-                self.assertIsNone(seen['env'])   # an ordinary update is judged as before
+                self.assertIsNone(seen['env'])
+                self.assertTrue(seen['check_current'])
 
     # the window's half (the card's 快速启动 sends this request; a quick App shown as one): checked in MNG-Launcher, the
     # Launcher's own repository since 2026-11-20 (tests/test_porting_contract.py)

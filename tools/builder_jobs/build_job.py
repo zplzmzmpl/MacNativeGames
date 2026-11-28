@@ -30,14 +30,14 @@ class Refused(Exception):
     pass
 
 
-def express_plan(app, python=sys.executable, work=None, quick=False):
+def express_plan(app, python=sys.executable, work=None, quick=False, *, check_current=False):
     """update_runtime.py --plan for an installed app (tools/builder_jobs/installed.py asks the same). quick: asked for a
     快速启动, whose update makes only the title's shaders again, so a new translator or chain needs no full build for it
     (games/oot/build.py update_blocker 'title')."""
     from tools.builder_jobs.installed import plan
     if quick:
         return plan(app, python, work, env={**os.environ, 'OOT_SHADERS': 'title'})
-    return plan(app, python, work) if work else plan(app, python)
+    return plan(app, python, work, check_current=check_current)
 
 
 def command(request, python=sys.executable):
@@ -71,7 +71,7 @@ def command(request, python=sys.executable):
     if request.get('update'):
         app = Path(request['update']).expanduser()
         given = request.get('work')
-        up = express_plan(app, python, given, quick=bool(request.get('quick')))   # 快速启动 from a card: the same quick build
+        up = express_plan(app, python, given, quick=bool(request.get('quick')), check_current=not given)
         if up['kind'] == 'full':
             raise Refused(t(f'this app needs a full build: {up["reason"]}. Drop its game files in step 1',
                             f'这个 App 要完整打包：{up["reason"]}。请在第一步拖入它的游戏文件'))

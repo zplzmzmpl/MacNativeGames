@@ -101,6 +101,46 @@ class OcarinaPlan(unittest.TestCase):
         text = (ROOT / 'games/oot/build.py').read_text()
         self.assertIn('blocker=update_blocker(work,mode,remake=remake)\n    if blocker:raise ValueError(blocker)', text)
 
+    def test_launcher_disables_an_update_only_when_both_inputs_match(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / 'source'
+            listfile = source / 'games/oot/assets/shader_list.tsv'
+            listfile.parent.mkdir(parents=True)
+            listfile.write_text('bundled list\n')
+            (source / '.mng-source-commit').write_text('123456789abcdef\n')
+            digest = update_runtime.sha256(listfile)
+            app = oot_app(root, root / 'work')
+            plist = app / 'Contents/Info.plist'
+            base = plistlib.loads(plist.read_bytes())
+            cases = (('1234567', digest, 'current'), ('abcdef0', digest, 'express'),
+                     ('1234567', 'older-list', 'express'), ('1234567', None, 'express'))
+            with mock.patch.object(update_runtime.build_app, 'REPO', source), \
+                 mock.patch.object(update_runtime, 'oot_update_blocker', return_value=''):
+                for commit, checksum, expected in cases:
+                    with self.subTest(commit=commit, checksum=checksum):
+                        info = dict(base, MNGSourceCommit=commit)
+                        if checksum is not None:
+                            info['MNGShaderListSHA256'] = checksum
+                        plist.write_bytes(plistlib.dumps(info))
+                        result = update_runtime.plan(app, check_current=True)
+                        self.assertEqual(result['kind'], expected, result)
+                        self.assertEqual(update_runtime.plan(app)['kind'], 'express')
+
+    def test_launcher_refuses_a_repeat_request_from_an_outdated_card(self):
+        from tools.builder_jobs import build_job
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            app = oot_app(root, root / 'work')
+            plist = app / 'Contents/Info.plist'
+            info = plistlib.loads(plist.read_bytes())
+            plist.write_bytes(plistlib.dumps(dict(info, CFBundleIdentifier='org.macnativegames.oot')))
+            with mock.patch.object(build_job, 'express_plan',
+                                   return_value={'kind': 'current', 'reason': 'Up to date'}) as chosen:
+                with self.assertRaisesRegex(build_job.Refused, 'Up to date'):
+                    build_job.command({'update': str(app)})
+                chosen.assert_called_once_with(app, sys.executable, None, quick=False, check_current=True)
+
     def test_a_new_chain_is_a_fast_update(self):
         """User 2026-11-17 "oot 加上": when only the chain or translator stops the express update and the work folder can
         translate every shader again, the plan is the fast update (--seed), not the full build."""
