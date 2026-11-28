@@ -1,5 +1,16 @@
 # 更新记录
 
+## 2026-11-28 · 《时之笛》上游同步
+
+- **着色器清单。** 新增 3 个着色器变体、1 个绑定状态、64 条渲染管线和 6 条 Tile 读取管线。已用项目工具核对新增管线的绑定状态并导出两份预热清单。 [上游清单](https://github.com/ly05010419/MacNativeGames/commit/cae491f769223be1c8961bac8035fb58c9459fbc)
+- **打包图标。** 更新官方图标的固定地址和哈希。图标提取失败时清理工作目录里的残留图标，继续打包并使用系统默认图标。设备版构建记录在有图标时才收录图标信息。已验证无网络时能从 Launcher 离线包生成新图标。 [上游打包修复](https://github.com/ly05010419/MacNativeGames/commit/04e848efae505869cbdae60ae7fd08d1f5e19b29)
+- **同步范围。** 本批跳过 VR、《旷野之息》HDR、Pokopia 内存池跟踪和其他游戏的构建与启动选项。《时之笛》已启用内存池重叠跟踪，Launcher 的游戏卡片可以直接启动游戏。 [Issue #3](https://github.com/zplzmzmpl/MacNativeGames/issues/3)
+
+### 本机版 Launcher 1.1.10
+
+- 从 `94b28a5a` 重编 `oot-native` 和 `oot-pool-sources-list`，最低系统版本均为 macOS 26.0。内置源码与离线包通过完整性校验，新版已在 `/Applications` 安装并启动。 [内置源码提交](https://github.com/zplzmzmpl/MacNativeGames/commit/94b28a5ac4f5e616fec30329616b8bd748c02950)
+- `make check` 的 987 项 Python 测试中，970 项通过、17 项跳过。14 项 C 检查全部通过。外接构建卷未挂载，完整游戏打包和实机游玩尚待验证。 [仓库测试入口](Makefile#L44)
+
 ## 2026-11-27 · 《时之笛》上游同步
 
 - **VR。** 合入随手部动作判定的剑刃命中、双手瞄准、手腕状态面板、道具轮盘和舒适遮罩。ARM64 探针覆盖了运行时钩子和交互计算，头显实机验证待完成。 [上游 VR 改动](https://github.com/ly05010419/MacNativeGames/commit/9c2554bc7452aa6dad1e106fb2c79b4862fe7146)
